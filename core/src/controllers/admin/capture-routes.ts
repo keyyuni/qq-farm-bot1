@@ -470,11 +470,11 @@ function scheduleCapturedAccountStart(options: {
     const { ctx, flow, accountId, isUpdate, wasRunning } = options;
     const timer = setTimeout(() => {
         try {
-            if (isUpdate) {
-                if (wasRunning) ctx.provider.restartAccount(accountId);
-            } else {
+            // 抓包登录完成即视为一次全新登录：更新已有账号时无论之前是否在运行都启动（运行中的重启）
+            if (isUpdate && wasRunning)
+                ctx.provider.restartAccount(accountId);
+            else
                 ctx.provider.startAccount(accountId);
-            }
         } catch (error: any) {
             const startError = error.message || '账号启动失败';
             if (flow.result) flow.result.startError = startError;

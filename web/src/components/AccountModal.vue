@@ -380,7 +380,7 @@ async function submitPendingQrAccount(platform: 'wx' | 'qq') {
     qqStatus.value = props.editData ? '正在重新登录...' : '正在添加账号...'
   }
 
-  const payload: any = { name, code, platform, loginType: 'manual' }
+  const payload: any = { name, code, platform, loginType: 'manual', startAfterSave: true }
   if (platform === 'wx' && wxPendingCredentials) {
     payload.wxid = wxPendingCredentials.wxid
     payload.loginBuffer = wxPendingCredentials.loginBuffer
@@ -461,6 +461,8 @@ async function submitManual() {
     code,
     platform: props.editData ? (props.editData.platform || 'qq') : form.platform,
     loginType: 'manual',
+    // 登录完成后自动启动，不用回列表手动点一次「启动」
+    startAfterSave: true,
   }
 
   await addAccount(payload, !!props.editData)

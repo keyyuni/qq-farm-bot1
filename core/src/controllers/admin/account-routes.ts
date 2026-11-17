@@ -106,6 +106,9 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             if (!requestedName) {
                 return res.status(400).json({ ok: false, error: '账号备注不能为空' });
             }
+            // 前端扫码/填码登录完成后带 startAfterSave: true，保存后直接启动账号，无需回列表手动点启动
+            const startAfterSave = body.startAfterSave === true;
+            delete (body as any).startAfterSave;
             const currentUser = (req as AuthenticatedRequest).currentUser || null;
             const visibleAccounts = getAccountList(ctx, currentUser);
             const remarkMatchedAccount = !body.id && requestedName
@@ -192,9 +195,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             } else if (isRemarkRelogin) {
                 // Adding with an existing remark is a relogin operation, including for stopped accounts.
                 ctx.provider.restartAccount(payload.id);
-            } else if (wasRunning && !onlyRemarkChanged) {
-                // 如果是更新，且之前在运行，且不是仅修改备注，则重启
-                ctx.provider.restartAccount(payload.id);
+            } else if (!onlyRemarkChanged && (wasRunning || startAfterSave)) {
+                // 更新账号：之前在运行或前端要求登录后自动启动（扫码/填码重新登录），则重启/启动
+                if (wasRunning)
+                    ctx.provider.restartAccount(payload.id);
+                else
+                    ctx.provider.startAccount(payload.id);
             }
             res.json({ ok: true, data });
         } catch (e: any) {
