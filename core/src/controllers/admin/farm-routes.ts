@@ -15,6 +15,7 @@ const {
     getAccId,
     handleApiError,
     resolveAccId,
+    canAccessAccount,
 } = require('./middleware');
 
 function mountFarmRoutes(app: Application, ctx: AdminContext): void {
@@ -24,6 +25,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/status', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = ctx.provider.getStatus(id);
@@ -41,6 +43,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/diamond', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const diamond = await ctx.provider.getDiamondBalance(id);
@@ -53,6 +56,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/automation', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) {
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
             return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
         }
 
@@ -70,6 +74,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/fertilizer/buy', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) {
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
             return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
         }
 
@@ -87,6 +92,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/fertilizer/check-and-buy', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) {
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
             return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
         }
 
@@ -116,6 +122,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/lands', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getLands(id);
@@ -129,6 +136,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/farm/interaction-items', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getSelfInteractionItems(id);
@@ -142,6 +150,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/farm/interaction-items/use-batch', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.useSelfInteractionItemBatch(id, req.body?.itemId, req.body?.landIds);
@@ -156,6 +165,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
         try {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
+            if (!canAccessAccount(ctx, req, accountId)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
             const list = store.getPlantBlacklist ? store.getPlantBlacklist(accountId) : [];
             res.json({ ok: true, data: list });
@@ -168,6 +178,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
         try {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
+            if (!canAccessAccount(ctx, req, accountId)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
             const seedId = Number((req.body || {}).seedId);
             if (!seedId) return res.status(400).json({ ok: false, error: 'Missing seedId' });
@@ -196,6 +207,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
         try {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
+            if (!canAccessAccount(ctx, req, accountId)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
             const seedId = Number(req.params.seedId);
             if (!seedId) return res.status(400).json({ ok: false, error: 'Missing seedId' });
@@ -223,6 +235,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
         try {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
+            if (!canAccessAccount(ctx, req, accountId)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
             const seedIds = (req.body || {}).seedIds || [];
             if (!Array.isArray(seedIds)) {
@@ -252,6 +265,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
         try {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing accountId' });
+            if (!canAccessAccount(ctx, req, accountId)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
             if (store.setPlantBlacklist) {
                 store.setPlantBlacklist(accountId, []);
@@ -271,6 +285,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/seeds', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getSeeds(id);
@@ -284,6 +299,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/bag', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getBag(id);
@@ -297,6 +313,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/bag/use', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const { itemId, count, uid } = req.body;
@@ -312,6 +329,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/bag/sell', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const { items } = req.body;
@@ -328,6 +346,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/seeds/purchase', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             const data = await ctx.provider.purchaseSeed(id, req.body?.goodsId, req.body?.count);
             res.json({ ok: true, data });
@@ -339,6 +358,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/illustrated', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getIllustratedSnapshot(id);
@@ -351,6 +371,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/collections', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             res.json({ ok: true, data: await ctx.provider.getCollectionsSnapshot(id) });
         } catch (e: any) {
@@ -361,6 +382,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/collections/:action', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             res.json({ ok: true, data: await ctx.provider.operateCollections(id, String(req.params.action), req.body) });
         } catch (e: any) {
@@ -376,6 +398,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/bag/lock', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const { itemUids, locked } = req.body || {};
@@ -396,6 +419,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/dog/skill-gifts', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getDogSkillGiftStatus(id);
@@ -409,6 +433,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/dog/skill-gifts/claim', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.claimDogSkillGifts(id);
@@ -422,6 +447,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/pets', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getPetInfo(id);
@@ -445,6 +471,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/pets/food/use', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const itemId = Number(req.body?.itemId) || 0;
@@ -462,6 +489,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/pets/activate', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             const dogId = Math.max(0, Number(req.body?.dogId) || 0);
             if (!dogId) return res.status(400).json({ ok: false, error: '缺少 dogId' });
@@ -475,6 +503,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/pets/deploy', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             const dogId = Math.max(0, Number(req.body?.dogId) || 0);
             if (!dogId) return res.status(400).json({ ok: false, error: '缺少 dogId' });
@@ -488,6 +517,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/pets/withdraw', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             res.json({ ok: true, data: await ctx.provider.withdrawDog(id) });
         } catch (e: any) {
@@ -499,6 +529,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/pets/protect-logs', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             res.json({ ok: true, data: await ctx.provider.getPetProtectLogs(id) });
         } catch (e: any) {
@@ -510,6 +541,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/bag/seeds', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getBagSeeds(id);
@@ -523,6 +555,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/daily-gifts', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getDailyGifts(id);
@@ -567,6 +600,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/farm/fertilize', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.fertilizeOwnLand(id, req.body?.landId, req.body?.fertilizerType);
@@ -579,6 +613,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/farm/fertilize-all', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         if (!['normal', 'organic'].includes(req.body?.fertilizerType)) {
             return res.status(400).json({ ok: false, error: '化肥类型必须是 normal 或 organic' });
         }
@@ -596,6 +631,7 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/farm/operate', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const { opType, landId } = req.body; // 'harvest', 'clear', 'plant', 'all'; landId 用于单点务农

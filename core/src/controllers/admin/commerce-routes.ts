@@ -2,7 +2,7 @@ import type { Application, Request, Response } from 'express';
 import type { AdminContext } from './context';
 export {};
 
-const { getAccId } = require('./middleware');
+const { getAccId, canAccessAccount } = require('./middleware');
 
 const ERROR_MESSAGES: Record<string, string> = {
     INVALID_GOODS_ID: '商品信息无效，请刷新商城后重试',
@@ -37,6 +37,10 @@ function mountCommerceRoutes(app: Application, ctx: AdminContext): void {
         return async (req: Request, res: Response) => {
             const accountId = getAccId(ctx, req);
             if (!accountId) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+            // 归属检查：普通用户只能操作自己名下的账号
+            if (!canAccessAccount(ctx, req, accountId)) {
+                return res.status(403).json({ ok: false, error: '无权操作该账号' });
+            }
             try {
                 const data = await handler(accountId, req);
                 return res.json({ ok: true, data });

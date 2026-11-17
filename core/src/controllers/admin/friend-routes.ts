@@ -15,6 +15,7 @@ const {
     isGatewayProtocolError,
     isSoftRuntimeError,
     buildKnownFriendGidSettings,
+    canAccessAccount,
 } = require('./middleware');
 
 function mountFriendRoutes(app: Application, ctx: AdminContext): void {
@@ -23,6 +24,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friends', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const forceSync = req.query.forceSync === 'true';
 
@@ -38,6 +40,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friends/cache', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             const data = await ctx.provider.getFriendsCache(id);
             res.json({ ok: true, data });
@@ -50,6 +53,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friends/clear-cache', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             await ctx.provider.clearFriendsCache(id);
@@ -63,6 +67,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/interact-records', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
         try {
             const data = await ctx.provider.getInteractRecords(id);
             res.json({ ok: true, data });
@@ -75,6 +80,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friend/:gid/lands', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getFriendLands(id, req.params.gid);
@@ -88,6 +94,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friend-interaction-items', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.getFriendInteractionItems(id);
@@ -101,6 +108,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend/:gid/interaction-items/use-batch', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.useFriendInteractionItemBatch(
@@ -119,6 +127,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend/:gid/interaction-items/use-farm', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const data = await ctx.provider.useFriendFarmInteractionItem(id, req.params.gid, req.body?.itemId);
@@ -132,6 +141,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend/:gid/op', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const opType = String((req.body || {}).opType || '');
@@ -154,6 +164,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend/:gid/delete', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const gid = Number(req.params.gid);
@@ -184,6 +195,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friend-blacklist', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const gids = store.getFriendBlacklist ? store.getFriendBlacklist(id) : [];
 
@@ -226,6 +238,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend-blacklist/toggle', async (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const gid = Number((req.body || {}).gid);
         if (!gid) return res.status(400).json({ ok: false, error: 'Missing gid' });
@@ -285,6 +298,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/friend-known-gids', (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             return res.json({ ok: true, data: buildKnownFriendGidSettings(id) });
@@ -297,6 +311,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend-known-gids', (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -323,6 +338,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend-known-gids/remove', (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const gid = Number((req.body || {}).gid);
         if (!Number.isFinite(gid) || gid <= 0) {
@@ -349,6 +365,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend-known-gids/batch-add', (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const gids = (req.body || {}).gids;
         if (!Array.isArray(gids) || gids.length === 0) {
@@ -389,6 +406,7 @@ function mountFriendRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/friend-known-gids/batch-remove', (req: Request, res: Response) => {
         const id = getAccId(ctx, req);
         if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        if (!canAccessAccount(ctx, req, id)) return res.status(403).json({ ok: false, error: '无权操作该账号' });
 
         const gids = (req.body || {}).gids;
         if (!Array.isArray(gids) || gids.length === 0) {

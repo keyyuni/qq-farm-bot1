@@ -354,6 +354,10 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         if (!id) {
             return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
         }
+        // 归属检查：普通用户只能保存自己账号的配置
+        if (!canAccessAccount(ctx, req, id)) {
+            return res.status(403).json({ ok: false, error: '无权操作该账号' });
+        }
 
         try {
             const data = await ctx.provider.saveSettings(id, req.body || {});
@@ -651,7 +655,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    app.get('/api/settings/system-config', (_req: Request, res: Response) => {
+    app.get('/api/settings/system-config', (req: Request, res: Response) => {
+        // 仅超级管理员可读：返回值含 NapCat 接口签名等机密（与 GET /api/settings/login-config 的脱敏逻辑保持一致）
+        const systemConfigUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!systemConfigUser || !isSuperAdminRole(systemConfigUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可查看全局设置' });
+        }
         try {
             res.json({
                 ok: true,

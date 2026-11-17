@@ -13,15 +13,26 @@ interface AuthenticatedRequest extends Request {
     currentUser?: any;
 }
 
+/**
+ * 是否信任反向代理注入的客户端 IP 头。
+ * 默认关闭：服务器直接对公网部署时，cf-connecting-ip / x-real-ip / x-forwarded-for
+ * 均由客户端任意伪造，若信任它们，登录/注册等接口的 IP 限速可被绕过。
+ * 部署在可信反代（nginx / Cloudflare）之后时，设置 FARM_TRUST_PROXY_HEADERS=true 启用。
+ */
+const TRUST_PROXY_HEADERS = process.env.FARM_TRUST_PROXY_HEADERS === 'true'
+    || process.env.FARM_TRUST_PROXY_HEADERS === '1';
+
 function getClientIp(req: Request): string {
-    const cfIp = req.headers['cf-connecting-ip'];
-    if (cfIp) return String(cfIp).trim();
-    const realIp = req.headers['x-real-ip'];
-    if (realIp) return String(realIp).trim();
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) {
-        const first = String(forwarded).split(',').map(item => item.trim()).find(Boolean);
-        if (first) return first;
+    if (TRUST_PROXY_HEADERS) {
+        const cfIp = req.headers['cf-connecting-ip'];
+        if (cfIp) return String(cfIp).trim();
+        const realIp = req.headers['x-real-ip'];
+        if (realIp) return String(realIp).trim();
+        const forwarded = req.headers['x-forwarded-for'];
+        if (forwarded) {
+            const first = String(forwarded).split(',').map(item => item.trim()).find(Boolean);
+            if (first) return first;
+        }
     }
     const address = req.ip || (req as any).connection?.remoteAddress || req.socket?.remoteAddress;
     return String(address || 'unknown').replace(/^::ffff:/, '');

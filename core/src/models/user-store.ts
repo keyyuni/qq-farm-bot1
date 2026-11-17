@@ -1506,8 +1506,10 @@ function claimCardByUA(userAgent: string, username: string | null = null, ip = '
 
     state.reservations = state.reservations.filter((item: any) => nowTs < Number(item.expiresAt || 0));
 
+    // 限流键只用真实 IP（UA 由客户端任意伪造，不能作为唯一依据；
+    // 未配置 FARM_TRUST_PROXY_HEADERS 时 getClientIp 返回连接 IP，不可伪造）
     const hit = state.records.find((item: any) =>
-        (item.uaHash === uaHash || (item.ipHash && item.ipHash === ipHash))
+        item.ipHash && item.ipHash === ipHash
         && nowTs - Number(item.claimTime || 0) < intervalMs);
     if (hit) {
         const remainingMs = intervalMs - (nowTs - Number(hit.claimTime || 0));

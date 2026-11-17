@@ -46,7 +46,9 @@ function startAdminServer(dataProvider: any): void {
     ctx = createAdminContext(dataProvider);
 
     const app = express();
-    app.set('trust proxy', true);
+    // 仅在明确声明部署于可信反代之后时才信任代理跳数；直连公网时关闭，
+    // 避免客户端伪造 X-Forwarded-For 绕过 IP 限速（详见 middleware.ts 的 TRUST_PROXY_HEADERS）。
+    app.set('trust proxy', process.env.FARM_TRUST_PROXY_HEADERS === 'true' || process.env.FARM_TRUST_PROXY_HEADERS === '1' ? 1 : false);
     app.use(express.json());
 
     ctx.app = app;
