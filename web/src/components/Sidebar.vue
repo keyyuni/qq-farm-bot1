@@ -285,6 +285,8 @@ const connectionStatus = computed(() => {
 const navItems = computed(() => {
   return getSpaceMenu(route.meta.gameSpace === 'ranch')
     .filter(item => !item.meta?.superOnly || userStore.isSuperAdmin)
+    // 管理后台入口已收敛到「设置」页签与用户下拉菜单，左侧导航不再展示
+    .filter(item => item.name !== 'admin-panel')
     .map(item => ({
       path: item.path ? `/${item.path}` : '/',
       label: item.label,
