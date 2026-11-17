@@ -31,6 +31,8 @@ const provider = {
     getFriends: async () => [{ gid: 1001, name: 'friend' }],
     saveSettings: async () => ({ saved: true }),
     getStatus: () => ({ status: { nickname: 'x' } }),
+    startAccountWithFreshCode: async () => true,
+    stopAccount: () => true,
 };
 startAdminServer(provider);
 
@@ -99,6 +101,28 @@ async function login(username, password, headers = {}) {
     check('修复2: 普通用户读取全局设置被拒', r.status === 403, `status=${r.status}`);
     r = await req('GET', '/api/settings/system-config', { token: tAdmin });
     check('修复2: 超管读取全局设置正常', r.status === 200 && r.data?.ok === true, `status=${r.status}`);
+
+    // ---- 归属校验：账号可见性开关 + 启动/停止（与「只能操作自己的」设计对齐）----
+    r = await req('POST', '/api/accounts/acc-b/start', { token: tA });
+    check('归属: 开关关-alice 启动 bob 账号被拒', r.status === 403, `status=${r.status}`);
+    r = await req('POST', '/api/accounts/acc-a/start', { token: tA });
+    check('归属: 开关关-alice 启动自己账号正常', r.status === 200 && r.data?.ok === true, `status=${r.status}`);
+    r = await req('POST', '/api/admin/account-visibility', { token: tAdmin, body: { usersSeeAllAccounts: true } });
+    check('归属: 超管开启「可见全部账号」', r.status === 200 && r.data?.data?.usersSeeAllAccounts === true, `status=${r.status}`);
+    r = await req('GET', '/api/accounts', { token: tA });
+    const seenAll = r.status === 200 && Array.isArray(r.data?.data?.accounts)
+        && r.data.data.accounts.some(a => a.id === 'acc-b');
+    check('归属: 开关开-alice 可见 bob 账号', seenAll, `status=${r.status}`);
+    r = await req('POST', '/api/accounts/acc-b/start', { token: tA });
+    check('归属: 开关开-可见但启动 bob 账号仍被拒', r.status === 403, `status=${r.status}`);
+    r = await req('POST', '/api/accounts/acc-b/stop', { token: tA });
+    check('归属: 开关开-停止 bob 账号仍被拒', r.status === 403, `status=${r.status}`);
+    r = await req('POST', '/api/accounts/acc-a/start', { token: tA });
+    check('归属: 开关开-启动自己账号正常', r.status === 200 && r.data?.ok === true, `status=${r.status}`);
+    r = await req('POST', '/api/accounts/acc-b/start', { token: tAdmin });
+    check('归属: 超管启动任意账号不受影响', r.status === 200 && r.data?.ok === true, `status=${r.status}`);
+    r = await req('POST', '/api/admin/account-visibility', { token: tAdmin, body: { usersSeeAllAccounts: false } });
+    check('归属: 恢复开关为关', r.status === 200, `status=${r.status}`);
 
     // ---- 修复 4：免费领卡 UA 伪造 ----
     r = await req('POST', '/api/card-claim/claim', { headers: { 'user-agent': 'UA-attacker-A' } });

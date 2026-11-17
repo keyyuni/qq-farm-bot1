@@ -2,6 +2,10 @@ import type { Application, Request, Response } from 'express';
 import type { AdminContext } from './context';
 export {};
 
+interface AuthenticatedRequest extends Request {
+    currentUser?: { username?: string, role?: string } & Record<string, any>;
+}
+
 /**
  * Farm-related routes: status, automation, fertilizer, lands, seeds, bag,
  * daily-gifts, accounts start/stop, farm operate, analytics, plant-blacklist.
@@ -568,7 +572,12 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     // API: 启动账号
     app.post('/api/accounts/:id/start', async (req: Request, res: Response) => {
         try {
-            const accountId = resolveAccId(ctx, req.params.id);
+            const currentUser = (req as AuthenticatedRequest).currentUser || null;
+            const accountId = resolveAccId(ctx, req.params.id, currentUser);
+            // 归属检查：普通用户只能启动自己名下的账号
+            if (!accountId || !canAccessAccount(ctx, req, accountId)) {
+                return res.status(403).json({ ok: false, error: '无权操作该账号' });
+            }
 
             // 微信扫码号先换新 Code 再启动，避免旧 Code 过期导致 WS 400 → 自动重登绕一圈
             const ok = await ctx.provider.startAccountWithFreshCode(accountId);
@@ -584,7 +593,12 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     // API: 停止账号
     app.post('/api/accounts/:id/stop', (req: Request, res: Response) => {
         try {
-            const accountId = resolveAccId(ctx, req.params.id);
+            const currentUser = (req as AuthenticatedRequest).currentUser || null;
+            const accountId = resolveAccId(ctx, req.params.id, currentUser);
+            // 归属检查：普通用户只能停止自己名下的账号
+            if (!accountId || !canAccessAccount(ctx, req, accountId)) {
+                return res.status(403).json({ ok: false, error: '无权操作该账号' });
+            }
 
             const ok = ctx.provider.stopAccount(accountId);
             if (!ok) {
