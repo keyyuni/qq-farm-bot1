@@ -31,7 +31,6 @@ const form = ref({
   expiresAt: '',
   isPermanent: false,
   nick: '',
-  email: '',
   remark: '',
 })
 
@@ -77,7 +76,6 @@ function openCreate() {
     expiresAt: '',
     isPermanent: false,
     nick: '',
-    email: '',
     remark: '',
   }
   modal.value = 'create'
@@ -96,7 +94,6 @@ function openEdit(user: User) {
       : '',
     isPermanent: user.subscription?.isPermanent === true,
     nick: user.nick || '',
-    email: user.email || '',
     remark: user.remark || '',
   }
   modal.value = 'edit'
@@ -129,7 +126,6 @@ async function submitCreateOrEdit() {
       role: form.value.role,
       accountLimit: form.value.accountLimit,
       nick: form.value.nick,
-      email: form.value.email,
       remark: form.value.remark,
       isPermanent: form.value.isPermanent,
       expiresAt: form.value.isPermanent ? null : (form.value.expiresAt || null),
@@ -455,10 +451,6 @@ defineExpose({ load })
             <div v-if="!form.isPermanent">
               <label class="mb-1 block text-xs text-gray-500">到期时间</label>
               <input v-model="form.expiresAt" type="datetime-local" class="form-input">
-            </div>
-            <div>
-              <label class="mb-1 block text-xs text-gray-500">邮箱（用于接收邮件通知）</label>
-              <input v-model="form.email" type="email" class="form-input" placeholder="留空则不接收邮件通知">
             </div>
             <div>
               <label class="mb-1 block text-xs text-gray-500">备注</label>
