@@ -9,7 +9,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import CareerHarvestSteal from '@/components/CareerHarvestSteal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import FarmSceneView from '@/components/FarmSceneView.vue'
+import FarmScene from '@/components/FarmScene.vue'
 import LandCard from '@/components/FarmLandCard.vue'
 import LandDetailModal from '@/components/LandDetailModal.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
@@ -815,11 +815,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <FarmSceneView
+          <FarmScene
             v-if="viewMode === 'scene'"
             :lands="lands"
-            interactive
-            @open="detailLandId = $event.id"
+            @select="detailLandId = $event.id"
           />
           <div v-else class="personal-panel__scroll custom-scrollbar" role="region" aria-label="土地列表" tabindex="0">
             <div v-if="cleanableFarmSocialEvents.length > 0" class="mb-4 flex flex-wrap items-center justify-between gap-2 border border-emerald-200 rounded-xl bg-emerald-50/85 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
