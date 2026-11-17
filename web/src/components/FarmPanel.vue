@@ -1189,6 +1189,7 @@ onUnmounted(() => {
 
 @media (max-width: 479px) {
   .farm-heading {
+    flex-wrap: wrap;
     gap: 6px;
   }
 
@@ -1203,11 +1204,9 @@ onUnmounted(() => {
   }
 
   .farm-view-switch button {
-    padding: 3px 8px;
-  }
-
-  .farm-view-switch button span:last-child {
-    display: none;
+    gap: 3px;
+    padding: 3px 7px;
+    font-size: 11px;
   }
 
   .farm-mobile-actions {
