@@ -19,6 +19,7 @@ const {
     resolveAccId,
     canAccessAccount,
     isAccountOwner,
+    createRequireAdminRole,
 } = require('./middleware');
 const userStore = require('../../models/user-store');
 const inviteRewards = require('../../services/invite-rewards');
@@ -29,14 +30,35 @@ interface AuthenticatedRequest extends Request {
 }
 
 function mountAccountRoutes(app: Application, ctx: AdminContext): void {
+    const requireAdminRole = createRequireAdminRole(ctx);
+
+    // 普通用户是否可见全部农场账号（默认关闭：普通用户只能看到自己添加的账号）
+    app.get('/api/admin/account-visibility', requireAdminRole, (_req: Request, res: Response) => {
+        try {
+            res.json({ ok: true, data: { usersSeeAllAccounts: store.getUsersSeeAllAccounts() } });
+        } catch (error: any) {
+            res.status(500).json({ ok: false, error: error.message });
+        }
+    });
+
+    app.post('/api/admin/account-visibility', requireAdminRole, (req: Request, res: Response) => {
+        try {
+            const enabled = (req.body || {}).usersSeeAllAccounts === true;
+            const saved = store.setUsersSeeAllAccounts(enabled);
+            res.json({ ok: true, data: { usersSeeAllAccounts: saved } });
+        } catch (error: any) {
+            res.status(400).json({ ok: false, error: error.message });
+        }
+    });
 
     // API: 账号管理
     app.get('/api/accounts', (req: Request, res: Response) => {
         try {
             const data = ctx.provider.getAccounts();
             const user = (req as AuthenticatedRequest).currentUser || null;
-            // 多用户归属过滤：普通用户只能看到自己的账号
-            if (user && !isSuperAdminRole(user.role) && Array.isArray(data?.accounts)) {
+            // 多用户归属过滤：普通用户默认只能看到自己的账号；
+            // 管理员开启「普通用户可见全部账号」后，普通用户也可看到全部账号（操作权限仍受归属校验约束）
+            if (user && !isSuperAdminRole(user.role) && !store.getUsersSeeAllAccounts() && Array.isArray(data?.accounts)) {
                 data.accounts = data.accounts.filter((account: any) => isAccountOwner(account, user));
             }
             res.json({ ok: true, data });

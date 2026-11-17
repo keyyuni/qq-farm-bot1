@@ -165,4 +165,6 @@ export interface GlobalConfig {
   loginSettings: LoginSettings;
   offlineReminder: OfflineReminder;
   systemConfig: SystemConfig | null;
+  /** 普通用户是否可见全部农场账号（默认关闭：仅可见自己添加的账号） */
+  usersSeeAllAccounts: boolean;
 }

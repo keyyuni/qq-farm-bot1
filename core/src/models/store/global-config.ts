@@ -143,6 +143,16 @@ function setOfflineReminder(cfg: Partial<OfflineReminder> | undefined): OfflineR
     return getOfflineReminder();
 }
 
+function getUsersSeeAllAccounts(): boolean {
+    return globalConfig.usersSeeAllAccounts === true;
+}
+
+function setUsersSeeAllAccounts(enabled: unknown): boolean {
+    const next = enabled === true;
+    saveGlobalConfig({ usersSeeAllAccounts: next });
+    return getUsersSeeAllAccounts();
+}
+
 function getSystemConfig(): SystemConfig | null {
     return globalConfig.systemConfig ? { ...globalConfig.systemConfig } : null;
 }
@@ -226,6 +236,8 @@ module.exports = {
     setLoginSettings,
     getOfflineReminder,
     setOfflineReminder,
+    getUsersSeeAllAccounts,
+    setUsersSeeAllAccounts,
     getSystemConfig,
     setSystemConfig,
 };

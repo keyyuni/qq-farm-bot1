@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api, { getApiErrorMessage } from '@/api'
 import AccountModal from '@/components/AccountModal.vue'
 import InviteCard from '@/components/account/InviteCard.vue'
+import AdminGlobalToggles from '@/components/admin/AdminGlobalToggles.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import PageTabs from '@/components/PageTabs.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
@@ -2501,6 +2502,9 @@ async function handleResetSystemConfig() {
           <h3 class="text-lg text-gray-900 font-bold dark:text-gray-100">
             系统设置
           </h3>
+
+          <!-- 全局功能开关：仅超级管理员可见 -->
+          <AdminGlobalToggles v-if="userStore.isSuperAdmin" />
 
           <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
             <!-- 运行环境：全局配置，仅超级管理员可见 -->

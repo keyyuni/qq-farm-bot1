@@ -55,6 +55,8 @@ module.exports = {
     setLoginSettings: globalConfig.setLoginSettings,
     getOfflineReminder: globalConfig.getOfflineReminder,
     setOfflineReminder: globalConfig.setOfflineReminder,
+    getUsersSeeAllAccounts: globalConfig.getUsersSeeAllAccounts,
+    setUsersSeeAllAccounts: globalConfig.setUsersSeeAllAccounts,
 
     // Accounts
     getAccounts: accounts.getAccounts,

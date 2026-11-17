@@ -540,6 +540,7 @@ const globalConfig: GlobalConfig = {
     loginSettings: { ...DEFAULT_LOGIN_SETTINGS },
     offlineReminder: { ...DEFAULT_OFFLINE_REMINDER },
     systemConfig: null,
+    usersSeeAllAccounts: false,
 };
 
 function resolveAccountId(accountId: unknown): string {
@@ -574,6 +575,9 @@ function loadGlobalConfig(): void {
             if (data.offlineReminder && typeof data.offlineReminder === 'object') {
                 globalConfig.offlineReminder = data.offlineReminder;
             }
+
+            // 账号可见性开关（默认关闭）
+            globalConfig.usersSeeAllAccounts = data.usersSeeAllAccounts === true;
 
             if (data.loginSettings && typeof data.loginSettings === 'object') {
                 globalConfig.loginSettings = {
