@@ -297,9 +297,9 @@ onUnmounted(() => {
 .farm-scene-stage :deep(.land-card-image) {
   position: absolute;
   left: 50%;
-  top: 35%;
-  width: 42%;
-  height: 68%;
+  top: 38%;
+  width: 35%;
+  height: 56%;
   margin: 0;
   transform: translate(-50%, -50%);
 }
@@ -307,15 +307,15 @@ onUnmounted(() => {
   top: 50%;
 }
 .farm-scene-stage :deep(.land-card-image-seed img) {
-  width: 23%;
+  width: 19%;
   max-width: none;
 }
 .farm-scene-stage :deep(.land-isometric-size-2 .land-card-image) {
   left: 50%;
   top: auto;
   bottom: 42%;
-  width: 56%;
-  height: 54%;
+  width: 47%;
+  height: 45%;
   align-items: flex-end;
   transform: translateX(-50%);
 }
@@ -326,14 +326,14 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
 }
 .farm-scene-stage :deep(.land-isometric-size-2 .land-card-image-seed img) {
-  width: 13%;
+  width: 11%;
 }
 .farm-scene-stage :deep(.land-isometric-size-2 .land-card-image-paradise .land-crop-image) {
   width: 100%;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
-  transform: scale(1.35);
+  transform: scale(1.15);
   transform-origin: 50% 82%;
   object-fit: contain;
 }
