@@ -5,6 +5,7 @@ import AdminAnnouncementPanel from '@/components/admin/AdminAnnouncementPanel.vu
 import AdminCardPanel from '@/components/admin/AdminCardPanel.vue'
 import AdminInvitePanel from '@/components/admin/AdminInvitePanel.vue'
 import AdminMailPanel from '@/components/admin/AdminMailPanel.vue'
+import AdminMailerCard from '@/components/admin/AdminMailerCard.vue'
 import AdminUserPanel from '@/components/admin/AdminUserPanel.vue'
 import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
@@ -286,7 +287,12 @@ onMounted(() => {
     </div>
 
     <AdminAnnouncementPanel v-else-if="tab === 'announcement'" />
-    <AdminMailPanel v-else-if="tab === 'mail'" />
+
+    <!-- 邮件通知：先配置并启用全局邮件服务，再批量发通知 -->
+    <div v-else-if="tab === 'mail'" class="space-y-4">
+      <AdminMailerCard />
+      <AdminMailPanel />
+    </div>
   </div>
 </template>
 

@@ -214,7 +214,7 @@ onMounted(loadRecipients)
         <h2 class="text-base text-gray-900 font-semibold dark:text-gray-100">
           发送通知邮件
         </h2>
-        <span class="text-xs text-gray-400">使用「设置 → 抓包登录设置」下方的 SMTP 邮件配置</span>
+        <span class="text-xs text-gray-400">使用上方「全局邮件服务」的 SMTP（需先配置并启用）</span>
       </div>
       <p class="mb-3 text-xs text-gray-500 leading-relaxed dark:text-gray-400">
         收件地址取用户账号资料里的邮箱。默认不发送给已过期用户，需要时可在下方打开「包含已过期用户」。
