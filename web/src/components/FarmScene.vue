@@ -9,9 +9,23 @@ import SceneLandCard from '@/components/SceneLandCard.vue'
 const props = withDefaults(defineProps<{
   lands: any[]
   weather?: any
+  /** 好友选地模式：传入受控选中集合后，点击地块只做 toggle、不打开详情浮层 */
+  selectionIds?: (string | number)[]
+  selectionDisabledIds?: (string | number)[]
+  selectionLabelMap?: Record<string, string>
+  emptyText?: string
 }>(), {
   weather: undefined,
+  selectionIds: undefined,
+  selectionDisabledIds: undefined,
+  selectionLabelMap: undefined,
+  emptyText: undefined,
 })
+
+// 是否处于好友受控选地模式
+const selectionMode = computed(() => Array.isArray(props.selectionIds))
+const selectedIdSet = computed(() => new Set((props.selectionIds || []).map(String)))
+const disabledIdSet = computed(() => new Set((props.selectionDisabledIds || []).map(String)))
 
 const emit = defineEmits<{
   (e: 'fertilize', land: any): void
@@ -146,6 +160,11 @@ function landStyle(land: any) {
 }
 
 function selectLand(land: any) {
+  // 好友受控选地模式：选中态由外部 selectionIds 驱动，这里只转发点击
+  if (selectionMode.value) {
+    emit('select', land)
+    return
+  }
   const id = Number(land?.id) || null
   selectedLandId.value = selectedLandId.value === id ? null : id
   emit('select', land)
@@ -204,9 +223,12 @@ onUnmounted(() => {
         :land="land"
         isometric
         :style="landStyle(land)"
-        :selected="selectedLandId === Number(land.id)"
-        :selection-active="selectedLandId !== null"
+        :selected="selectionMode ? selectedIdSet.has(String(land.id)) : selectedLandId === Number(land.id)"
+        :selection-active="selectionMode || selectedLandId !== null"
         :show-actions="false"
+        :hide-bubble="selectionMode"
+        :selection-disabled="selectionMode && disabledIdSet.has(String(land.id))"
+        :selection-label="selectionMode ? (selectionLabelMap?.[String(land.id)] || '') : ''"
         @select="selectLand"
         @fertilize="emit('fertilize', land)"
         @remove="emit('remove', land)"

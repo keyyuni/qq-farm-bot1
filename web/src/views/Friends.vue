@@ -14,7 +14,7 @@ import { computed, ref, watch } from 'vue'
 import api, { getApiErrorMessage } from '@/api'
 import CareerHarvestSteal from '@/components/CareerHarvestSteal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import LandCard from '@/components/LandCard.vue'
+import FarmScene from '@/components/FarmScene.vue'
 import PageTabs from '@/components/PageTabs.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
@@ -320,10 +320,6 @@ function isInteractionLandCandidate(land: any) {
     && !interactionItemTargetReason(selectedInteractionItem.value.itemId, land)
 }
 
-function isInteractionLandSelected(friendId: unknown, land: any) {
-  return selectedInteractionIds(friendId).includes(String(land?.id || ''))
-}
-
 function isInteractionLandDisabled(friendId: unknown, land: any) {
   const item = selectedInteractionItem.value
   return !item
@@ -332,6 +328,28 @@ function isInteractionLandDisabled(friendId: unknown, land: any) {
     || !isInteractionLandCandidate(land)
     || hasConfirmedInteractionEffect(land, item.itemId)
     || usedInteractionIdSet(friendId, item.itemId).has(String(land?.id || ''))
+}
+
+// 实景选地模式下，供 FarmScene 使用的禁用地块编号集合
+function interactionDisabledLandIds(friendId: unknown) {
+  const lands = friendLands.value[friendId as any] || []
+  return lands
+    .filter((land: any) => !land?.occupiedByMaster && isInteractionLandDisabled(friendId, land))
+    .map((land: any) => String(land.id))
+}
+
+// 实景选地模式下，供 FarmScene 使用的地块提示文案
+function interactionLandLabelMap(friendId: unknown) {
+  const lands = friendLands.value[friendId as any] || []
+  const map: Record<string, string> = {}
+  for (const land of lands) {
+    if (land?.occupiedByMaster)
+      continue
+    const label = interactionLandSelectionLabel(friendId, land)
+    if (label)
+      map[String(land.id)] = label
+  }
+  return map
 }
 
 function interactionLandSelectionLabel(friendId: unknown, land: any) {
@@ -1219,18 +1237,14 @@ async function handleBatchAddKnownFriendGids() {
                 <div v-else-if="!friendLands[friend.gid] || friendLands[friend.gid]?.length === 0" class="py-4 text-center text-gray-500">
                   该好友当前没有可展示的土地
                 </div>
-                <div v-else class="grid grid-cols-2 gap-2 lg:grid-cols-8 md:grid-cols-5 sm:grid-cols-4">
-                  <LandCard
-                    v-for="land in friendLands[friend.gid]"
-                    :key="land.id"
-                    :land="land"
-                    :selectable="!!selectedInteractionItem"
-                    :selected="isInteractionLandSelected(friend.gid, land)"
-                    :selection-disabled="isInteractionLandDisabled(friend.gid, land)"
-                    :selection-label="interactionLandSelectionLabel(friend.gid, land)"
-                    @select="toggleInteractionLand(friend.gid, land)"
-                  />
-                </div>
+                <FarmScene
+                  v-else
+                  :lands="friendLands[friend.gid] || []"
+                  :selection-ids="selectedInteractionIds(friend.gid)"
+                  :selection-disabled-ids="interactionDisabledLandIds(friend.gid)"
+                  :selection-label-map="interactionLandLabelMap(friend.gid)"
+                  @select="toggleInteractionLand(friend.gid, $event)"
+                />
               </template>
             </div>
           </div>

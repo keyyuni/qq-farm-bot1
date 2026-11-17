@@ -11,6 +11,10 @@ const props = withDefaults(defineProps<{
   isometric?: boolean
   selected?: boolean
   selectionActive?: boolean
+  /** 好友选地模式：隐藏详情浮层、支持禁用态与提示 */
+  hideBubble?: boolean
+  selectionDisabled?: boolean
+  selectionLabel?: string
 }>(), {
   showActions: true,
   farmGrid: false,
@@ -18,6 +22,9 @@ const props = withDefaults(defineProps<{
   isometric: false,
   selected: false,
   selectionActive: false,
+  hideBubble: false,
+  selectionDisabled: false,
+  selectionLabel: '',
 })
 
 const emit = defineEmits<{
@@ -345,9 +352,12 @@ function getIsometricBubbleClass(targetLand: any) {
       v-if="isometric"
       type="button"
       class="land-hit-area absolute"
-      :aria-label="`土地 #${land.id} ${land.plantName || ''}`"
+      :aria-label="`土地 #${land.id} ${land.plantName || ''}${selectionLabel ? ` · ${selectionLabel}` : ''}`"
       :aria-pressed="selected"
-      @click.stop="$emit('select', land)"
+      :aria-disabled="selectionDisabled || undefined"
+      :title="selectionLabel || undefined"
+      :disabled="selectionDisabled || undefined"
+      @click.stop="!selectionDisabled && $emit('select', land)"
     />
     <div
       class="land-ground-layer pointer-events-none absolute inset-0"
@@ -514,7 +524,7 @@ function getIsometricBubbleClass(targetLand: any) {
       </button>
     </div>
 
-    <Teleport v-if="farmGrid || isometric" to="body" :disabled="!isometric">
+    <Teleport v-if="(farmGrid || isometric) && !hideBubble" to="body" :disabled="!isometric">
       <div
         v-show="!isometric || floatingBubbleVisible"
         ref="bubbleElement"
