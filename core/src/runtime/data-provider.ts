@@ -439,6 +439,30 @@ function createDataProvider(options: DataProviderOptions) {
             return true;
         },
 
+        /**
+         * 手动点“启动”时使用：微信扫码号先用可再生凭证换一个新 Code 再拉起。
+         *
+         * 账号里存的 Code 很可能已经过期，直接 startWorker 会立刻 WS 400 →
+         * 触发自动重登（用户看到“重新连接”）→ 约 10 秒后才连上，体验像“第一次点启动不上”。
+         * 这里与应用启动流程 startAllAccounts 保持一致：先刷新 Code，
+         * refreshAccountCode 成功时内部已通过 restartWorker 拉起 worker；失败则回退旧 Code 直接启动。
+         * QQ 号没有可再生凭证，直接按原逻辑启动。
+         */
+        startAccountWithFreshCode: async (accountRef: string) => {
+            const accountId = resolveAccountRefId(accountRef);
+            const acc = findAccountByAnyRef(accountId || accountRef);
+            if (!acc) return false;
+            if (acc.platform === 'wx' && acc.loginBuffer && typeof refreshAccountCode === 'function') {
+                try {
+                    const refreshed = await refreshAccountCode(String(acc.id), 'manual_start');
+                    if (refreshed) return true;
+                } catch {
+                    // 刷新失败回退到旧 Code 直接启动
+                }
+            }
+            return startWorker(acc);
+        },
+
         stopAccount: (accountRef: string) => {
             const accountId = resolveAccountRefId(accountRef);
             const acc = findAccountByAnyRef(accountId || accountRef);

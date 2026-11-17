@@ -533,11 +533,12 @@ function mountFarmRoutes(app: Application, ctx: AdminContext): void {
     });
 
     // API: 启动账号
-    app.post('/api/accounts/:id/start', (req: Request, res: Response) => {
+    app.post('/api/accounts/:id/start', async (req: Request, res: Response) => {
         try {
             const accountId = resolveAccId(ctx, req.params.id);
 
-            const ok = ctx.provider.startAccount(accountId);
+            // 微信扫码号先换新 Code 再启动，避免旧 Code 过期导致 WS 400 → 自动重登绕一圈
+            const ok = await ctx.provider.startAccountWithFreshCode(accountId);
             if (!ok) {
                 return res.status(404).json({ ok: false, error: 'Account not found' });
             }
