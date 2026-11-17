@@ -15,6 +15,7 @@ const {
     getItemImageById,
     getMutantEffectsByIds,
     getMutantDisplayPlantId,
+    getMutantPlantImageByPhase,
 } = require('../../config/gameConfig');
 const { toNum, toTimeSec, getServerTimeSec, log, logWarn } = require('../../utils/utils');
 
@@ -351,6 +352,8 @@ function buildLandDetail(land: any, options: { friendMode?: boolean; landsMap?: 
     const phaseVal = toNum(currentPhase.phase);
     const plantId = toNum(plant.id);
     const mutantConfigIds = getPlantMutantConfigIds(plant, currentPhase);
+    // 客户端生长阶段贴图（用于实景视图），按当前 image_phase 取图；无导出图时为空串。
+    const plantImage = getMutantPlantImageByPhase(plantId, mutantConfigIds, toNum(currentPhase.image_phase));
     const mutantEffects = getMutantEffectsByIds(mutantConfigIds).map((effect: any) => effect.id === 18
         ? { ...effect, collections: getPlantCollectionMutations(plant, currentPhase) }
         : effect);
@@ -393,6 +396,7 @@ function buildLandDetail(land: any, options: { friendMode?: boolean; landsMap?: 
         plantName,
         seedId,
         seedImage: seedId > 0 ? getSeedImageBySeedId(seedId) : '',
+        plantImage,
         phaseName: currentPhase.phaseName || PHASE_NAMES[phaseVal] || '',
         currentSeason,
         totalSeason,

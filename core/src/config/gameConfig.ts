@@ -162,6 +162,11 @@ const illustratedItemMap = new Map<number, IllustratedConfigItem>();
 let buffConfig: BuffConfigItem[] | null = null;
 const buffConfigMap = new Map<number, BuffConfigItem>();
 
+// ============ 植物阶段贴图（游戏客户端导出）============
+// manifest 里登记 asset_name -> { 阶段号: /game-config/plant_images/.../N.png }
+const plantPhaseImageMap = new Map<string, Record<string, string>>();
+let plantPhaseManifestMtimeMs = 0;
+
 // 官方活动说明确认：变异 13 为鹊羽活动效果，收获时会额外获得鹊羽。
 // 运行时 MutantEffect 暂未下发 tips/description，因此在展示 DTO 层补充说明。
 const MUTANT_EFFECT_DESCRIPTION_FALLBACKS = new Map<number, string>([
@@ -415,6 +420,104 @@ function getPlantGrowPhases(plantId: number): PlantGrowPhase[] {
             const duration = separator >= 0 ? Number(value.slice(separator + 1)) || 0 : 0;
             return { index, name, duration };
         });
+}
+
+/**
+ * 加载官方植物阶段图片清单（core/src/gameConfig/plant_images/manifest.json）。
+ * manifest 更新后按需重载，无需重启服务。磁盘上存在但清单未登记的阶段图也会按目录补齐。
+ */
+function loadPlantPhaseManifest(force = false): void {
+    const configDir = getResourcePath('gameConfig');
+    const manifestPath = path.join(configDir, 'plant_images', 'manifest.json');
+    if (!fs.existsSync(manifestPath)) return;
+
+    let changed = force;
+    if (!force) {
+        try {
+            changed = fs.statSync(manifestPath).mtimeMs > plantPhaseManifestMtimeMs;
+        } catch {
+            changed = false;
+        }
+    }
+    if (!changed) return;
+
+    const nextMap = new Map<string, Record<string, string>>();
+    try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        for (const [assetName, phases] of Object.entries(manifest || {})) {
+            if (!assetName) continue;
+            const cleaned: Record<string, string> = {};
+            for (const [phaseKey, imagePath] of Object.entries(phases || {})) {
+                let url = String(imagePath || '');
+                if (url && !/^https?:\/\//.test(url) && !url.startsWith('/game-config')) {
+                    url = `/game-config/${url.replace(/^\//, '')}`;
+                }
+                cleaned[phaseKey] = url;
+            }
+            nextMap.set(assetName, cleaned);
+        }
+    } catch (e: any) {
+        console.warn(`[配置] 加载 plant_images manifest 失败: ${e.message}`);
+    }
+
+    // 清单未登记但磁盘确有阶段图的作物，按目录补齐
+    try {
+        const root = path.join(configDir, 'plant_images');
+        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+            if (!entry.isDirectory() || nextMap.has(entry.name)) continue;
+            const phases: Record<string, string> = {};
+            for (const file of fs.readdirSync(path.join(root, entry.name))) {
+                const match = /^(\d+)\.png$/i.exec(file);
+                if (match) phases[match[1]] = `/game-config/plant_images/${entry.name}/${file}`;
+            }
+            if (Object.keys(phases).length > 0) nextMap.set(entry.name, phases);
+        }
+    } catch {
+        // 目录扫描失败时沿用 manifest 结果
+    }
+
+    plantPhaseImageMap.clear();
+    for (const [assetName, phases] of nextMap) plantPhaseImageMap.set(assetName, phases);
+    try {
+        plantPhaseManifestMtimeMs = fs.statSync(manifestPath).mtimeMs;
+    } catch {
+        plantPhaseManifestMtimeMs = Date.now();
+    }
+    console.warn(`[配置] 已加载植物阶段映射 (${plantPhaseImageMap.size} 种)`);
+}
+
+/**
+ * 根据植物 ID 与当前阶段获取官方植物图片 URL，未导出时返回空字符串。
+ * 种子阶段（phase===1）统一使用客户端通用种子贴图。
+ */
+function getPlantImageByPhase(plantId: number | string, phase: number | string): string {
+    loadPlantPhaseManifest();
+    if (Number(phase) === 1) {
+        return plantPhaseImageMap.get('__common')?.seed || '';
+    }
+    const plant = plantMap.get(Number(plantId) || 0);
+    if (!plant) return '';
+    const seedId = Number((plant as any).seed_id) || 0;
+    const itemInfo = itemInfoMap.get(seedId);
+    const assetName = String(
+        (plant as any).asset_name
+        || (itemInfo && itemInfo.asset_name)
+        || (seedId > 20000 ? `Crop_${seedId - 20000}` : `Plant_${plant.id}`)
+    ).trim();
+    if (!assetName) return '';
+    const phases = plantPhaseImageMap.get(assetName);
+    if (!phases) return '';
+    return phases[String(Number(phase) || 1)] || '';
+}
+
+/** 获取变异作物阶段图，缺少专属导出图时回退到原作物。 */
+function getMutantPlantImageByPhase(
+    plantId: number | string,
+    mutantIds: Array<number | string> | undefined | null,
+    phase: number | string,
+): string {
+    const displayPlantId = getMutantDisplayPlantId(plantId, mutantIds);
+    return getPlantImageByPhase(displayPlantId, phase) || getPlantImageByPhase(plantId, phase);
 }
 
 function formatGrowTime(seconds: number): string {
@@ -743,6 +846,8 @@ module.exports = {
     getPlantNameBySeedId,
     getPlantGrowTime,
     getPlantGrowPhases,
+    getPlantImageByPhase,
+    getMutantPlantImageByPhase,
     getPlantExp,
     formatGrowTime,
     // 果实配置

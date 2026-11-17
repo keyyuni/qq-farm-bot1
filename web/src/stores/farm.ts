@@ -15,6 +15,7 @@ export interface Land {
   plantName?: string
   phaseName?: string
   seedImage?: string
+  plantImage?: string
   status: string
   matureInSec: number
   needWater?: boolean
