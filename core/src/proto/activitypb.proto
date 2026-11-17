@@ -524,3 +524,114 @@ message WeatherResearchOperateResult {
 message ActiviesChangeNotify {
     repeated ActivityContent activities = 1;
 }
+
+// ============================================================================
+// 抓包协议补充（源自 qq-farm-bot 抓包分析，上游未覆盖的玩法定义）
+// 注意：ActivityData/ActivityNode 的字段 101/102/105/110 在不同活动轮次中
+// 复用（本文件 102=catalog、105=weather_bottle、110=constellation），以下
+// 定义仅供协议解析参考，不接入 ActivityData 字段。
+// ============================================================================
+
+message DrawParams {
+    int64 id = 1;
+    int64 count = 2;
+    corepb.Item cost = 3;
+}
+message RandomShopOperateParams {
+    int64 id = 1;
+    int64 count = 2;
+}
+message HeluPaidDrawParams {
+    int64 type = 1;
+    int64 count = 2;
+    int64 item_uid = 3;
+}
+message TechTreeSubmitNodeReq {
+    int64 node_id = 1;
+}
+message TechTreeSubmitNodeRsp {
+    int64 node_id = 1;
+    repeated corepb.Item rewards = 2;
+    repeated int64 unlocked_node_ids = 3;
+}
+message RandomShopItem {
+    int32 id = 1;
+    string name = 2;
+    corepb.Item item = 4;
+    corepb.Item cost = 5;
+    int32 stock_count = 6;
+    int32 bought_count = 7;
+    bool special = 8;
+}
+message RandomShopInfo {
+    repeated RandomShopItem items = 1;
+    int64 next_refresh_time = 2;
+    int32 manual_refresh_cost = 3;
+    int32 manual_refresh_currency_id = 4;
+    int32 manual_refresh_extra_value = 5;
+    int32 max_manual_refresh_count = 6;
+    int32 manual_refresh_used_count = 7;
+}
+message ExchangeShopItem {
+    int32 id = 1;
+    corepb.Item item = 2;
+    corepb.Item cost = 3;
+    int32 status = 4;
+    bool owned = 5;
+    int32 sort = 6;
+    string name = 7;
+    string extra = 8;
+}
+message ExchangeShopInfo {
+    repeated ExchangeShopItem items = 1;
+}
+message DrawPoolItem {
+    int32 id = 1;
+    int32 rarity = 2;
+    corepb.Item item = 3;
+    int32 flag = 4;
+    string probability = 6;
+}
+message DrawInfo {
+    int32 free_remaining_count = 1;
+    int32 max_free_count = 2;
+    int32 paid_remaining_count = 3;
+    int32 max_paid_count = 4;
+    int32 paid_currency_id = 5;
+    int32 paid_price = 6;
+    int32 fallback_price = 7;
+    repeated DrawPoolItem rewards = 8;
+}
+message DrawReward {
+    int32 slot_id = 1;
+    corepb.Item item = 2;
+    int32 flag = 4;
+}
+message DrawResult {
+    repeated DrawReward rewards = 1;
+    repeated corepb.Item items = 2;
+    corepb.Item cost = 3;
+}
+message StarRecordReward {
+    int32 id = 1;
+    bool unlocked = 2;
+    bool claimed = 3;
+    repeated corepb.Item rewards = 5;
+}
+message StarRecordConfig {
+    int32 id = 1;
+    bool featured = 2;
+    string title = 3;
+    string graph = 4;
+    string extra = 5;
+}
+message StarRecordInfo {
+    int32 status = 1;
+    int32 opened_days = 2;
+    repeated StarRecordReward records = 4;
+    repeated StarRecordConfig configs = 5;
+}
+message StarRecordClaimResult {
+    repeated int32 record_ids = 1;
+    repeated corepb.Item rewards = 2;
+}

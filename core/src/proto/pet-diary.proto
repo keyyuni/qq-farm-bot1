@@ -476,3 +476,50 @@ message PetDiaryOperateReply {
     PetTreasureHuntClaimDogRsp pet_treasure_hunt_claim_dog = 148;
     PetTreasureHuntMarkStoryAnimatedRsp pet_treasure_hunt_mark_story_animated = 149;
     PetTreasureHuntSetSkipBattleCgRsp pet_treasure_hunt_set_skip_battle_cg = 150;}
+
+// ============================================================================
+// 抓包协议补充（源自 qq-farm-bot 抓包分析）：宠物日记（比熊之家）玩法。
+// 在上游 ActivityData 中未接入；抓包中位于活动节点字段 115（上游该字段
+// 当前为 pet_treasure_hunt），仅供协议解析参考。
+// ============================================================================
+
+message ActivityBodyPetDiary {
+    PetDiaryPet pet = 1;                // 115.1 比熊成长状态
+    PetDiaryHome home = 2;              // 115.2 比熊之家解锁状态
+    PetDiaryEscort escort = 3;          // 115.3 寻宝/宝藏护送状态
+    PetDiaryPhotoWall photo_wall = 4;   // 115.4 爪印手记照片墙
+    PetDiaryPouch pouch = 6;            // 115.6 锦囊
+    // 115.7 / 115.8 / 115.9 在抓包中为空子消息，含义未确认，暂不解析。
+}
+message PetDiaryPet {
+    int64 stage = 1;      // 阶段，观察到恒为 1
+    int64 progress = 3;   // 成长进度/投喂量，推断
+    int64 state = 4;      // 状态，观察到恒为 1
+}
+message PetDiaryHome {
+    int64 state = 1;
+}
+message PetDiaryEscort {
+    int64 guard = 3;       // 宝藏保底资金，观察到恒为 100
+    corepb.Item cake = 4;  // 元气糕相关记录，推断为寻宝消耗或库存
+}
+message PetDiaryPhotoEntry {
+    int64 id = 1;          // 片段序号，1..9
+    int64 unlocked = 2;    // 是否已解锁
+    int64 progress = 3;    // 解锁/领取进度，推断
+    string content = 4;    // JSON 字符串：{"photo": <spriteFrame>, "say": <spriteFrame>}
+    int64 claimed = 5;     // 是否已领取故事奖励
+}
+message PetDiaryPhotoWall {
+    repeated PetDiaryPhotoEntry entries = 1;
+}
+message PetDiaryPouch {
+    string flag = 2;       // 观察到恒为 "f"
+    PetDiaryPouchSlot slot = 4;
+    int64 state = 6;       // 观察到恒为 1
+}
+message PetDiaryPouchSlot {
+    int64 id = 1;          // 观察到 105
+    int64 type = 2;        // 观察到 1
+    int64 count = 3;       // 观察到 2
+}

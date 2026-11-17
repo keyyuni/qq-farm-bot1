@@ -22,6 +22,13 @@ const { mountActivityCenterRoutes } = require('./activity-center-routes');
 const { mountCommerceRoutes } = require('./commerce-routes');
 const { mountWxLoginRoutes } = require('./wx-login-routes');
 const { mountQqLoginRoutes } = require('./qq-login-routes');
+const { mountCaptureRoutes, ensureEmbeddedCaptureService } = require('./capture-routes');
+const { mountAdminUserRoutes } = require('./user-routes');
+const { mountAdminCardRoutes } = require('./card-routes');
+const { mountAdminInviteRoutes } = require('./invite-routes');
+const { mountAdminLoginLogRoutes } = require('./login-log-routes');
+const { mountAnnouncementRoutes } = require('./announcement-routes');
+const { mountAdminMailerRoutes } = require('./mailer-routes');
 const {
     setupSocketIO,
     emitRealtimeStatus: _emitStatus,
@@ -76,11 +83,20 @@ function startAdminServer(dataProvider: any): void {
     mountAuthRoutes(app, ctx);
     mountWxLoginRoutes(app, ctx);
     mountQqLoginRoutes(app, ctx);
+    mountCaptureRoutes(app, ctx);
     mountFarmRoutes(app, ctx);
     mountFriendRoutes(app, ctx);
     mountAccountRoutes(app, ctx);
     mountActivityCenterRoutes(app, ctx);
     mountCommerceRoutes(app, ctx);
+
+    // 多用户体系管理后台（用户/卡密/邀请/登录日志/公告/邮件）
+    mountAdminUserRoutes(app, ctx, adminLogger);
+    mountAdminCardRoutes(app, ctx, adminLogger);
+    mountAdminInviteRoutes(app, ctx);
+    mountAdminLoginLogRoutes(app, ctx, adminLogger);
+    mountAnnouncementRoutes(app, ctx);
+    mountAdminMailerRoutes(app, ctx);
 
     // SPA fallback
     app.get('*', (req: any, res: any) => {
@@ -101,6 +117,13 @@ function startAdminServer(dataProvider: any): void {
 
     // Setup Socket.IO
     setupSocketIO(ctx);
+
+    // 启动进程内抓包服务（若已启用且为嵌入模式；未启用时保存配置后会自动拉起）
+    try {
+        ensureEmbeddedCaptureService();
+    } catch (error: any) {
+        adminLogger.warn('capture service bootstrap failed', { error: error?.message || error });
+    }
 
 }
 

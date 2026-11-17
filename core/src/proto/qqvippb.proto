@@ -47,3 +47,12 @@ message VipInfoUpdatedNTF {
     int64 vip_type = 1;
     int64 vip_level = 2;
 }
+
+// ============================================================================
+// 抓包协议补充（源自 qq-farm-bot 抓包分析）。
+// ============================================================================
+
+message QQVipRewardConfig {
+    repeated corepb.Item rewards = 2;
+    int32 vip_type = 5;     // 1: QQ会员，2: 超级会员
+}

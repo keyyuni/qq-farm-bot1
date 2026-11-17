@@ -4,10 +4,13 @@ export {};
 
 const crypto = require('node:crypto');
 const store = require('../../models/store');
+const userStore = require('../../models/user-store');
+const { USER_SYSTEM_CONFIG, USER_ROLES, isElevatedRole, isSuperAdminRole } = require('../../config/user-system');
 const { normalizeAccountRef, resolveAccountId } = require('../../services/account-resolver');
 
 interface AuthenticatedRequest extends Request {
     adminToken?: string;
+    currentUser?: any;
 }
 
 function getClientIp(req: Request): string {
@@ -26,6 +29,39 @@ function getClientIp(req: Request): string {
 
 const issueToken = (): string => crypto.randomBytes(24).toString('hex');
 
+/** 账号归属字段：优先 owner，兼容旧数据使用 username */
+function getAccountOwner(account: any): string {
+    if (!account) return '';
+    const owner = String(account.owner || '').trim();
+    return owner || String(account.username || '').trim();
+}
+
+/** 判断账号是否归属于该登录用户（仅超级管理员视为全部归属） */
+function isAccountOwner(account: any, user: any): boolean {
+    if (!account || !user) return false;
+    if (isSuperAdminRole(user.role)) return true;
+    return getAccountOwner(account) === String(user.username || '').trim();
+}
+
+/** 会话复查：封禁 / 过期 / 会话超时（管理员豁免有效期检查） */
+function getSessionRejection(session: any): { reason: string, error: string } | null {
+    if (!session) return { reason: 'no_session', error: 'Unauthorized' };
+    if (isElevatedRole(session.role)) return null;
+
+    const subscription = session.subscription || session.card || null;
+    if (subscription && subscription.enabled === false) {
+        return { reason: 'disabled', error: '账号已被禁用，请联系管理员' };
+    }
+    if (subscription && userStore.isSubscriptionExpired(subscription)) {
+        return { reason: 'expired', error: '账号已过期，请续费后重新登录' };
+    }
+    const ttl = Number(USER_SYSTEM_CONFIG.sessionTtlMs) || 0;
+    if (ttl > 0 && session.createdAt && Date.now() - session.createdAt > ttl) {
+        return { reason: 'timeout', error: '登录已超时，请重新登录' };
+    }
+    return null;
+}
+
 function createAuthRequired(ctx: AdminContext) {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
         const token = String(req.headers['x-admin-token'] || '');
@@ -33,26 +69,98 @@ function createAuthRequired(ctx: AdminContext) {
             res.status(401).json({ ok: false, error: 'Unauthorized' });
             return;
         }
+        const session = ctx.sessions.get(token) || null;
+        const rejection = getSessionRejection(session);
+        if (rejection) {
+            ctx.tokens.delete(token);
+            ctx.sessions.delete(token);
+            res.status(403).json({
+                ok: false,
+                error: rejection.error,
+                errorType: rejection.reason,
+            });
+            return;
+        }
         req.adminToken = token;
+        req.currentUser = session;
         next();
     };
 }
 
-function getAccountList(ctx: AdminContext): any[] {
+/** 管理权限（超级管理员） */
+function createRequireAdminRole(ctx: AdminContext) {
+    void ctx;
+    return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+        const user = req.currentUser;
+        if (!user) {
+            res.status(401).json({ ok: false, error: '未登录' });
+            return;
+        }
+        if (!isElevatedRole(user.role)) {
+            res.status(403).json({ ok: false, error: '需要管理员权限' });
+            return;
+        }
+        next();
+    };
+}
+
+const createRequireSuperAdminRole = createRequireAdminRole;
+
+/** 危险操作确认：请求必须携带 confirmed: true（配合前端二次确认弹窗） */
+function requireDangerConfirmation(req: AuthenticatedRequest, res: Response, action: string): boolean {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const query = req.query || {};
+    const confirmed = body.confirmed === true || query.confirmed === 'true' || query.confirmed === '1';
+    if (!confirmed) {
+        res.status(400).json({
+            ok: false,
+            error: `危险操作「${action}」需要二次确认`,
+            needConfirm: true,
+            action,
+        });
+        return false;
+    }
+    return true;
+}
+
+/**
+ * 普通管理员不能增删改其他管理员账号。
+ * 返回错误文案；null 表示放行。
+ */
+function getAdminUserMutationError(currentUser: any, targetUsername: unknown): string | null {
+    if (!currentUser) return '未登录';
+    if (isSuperAdminRole(currentUser.role)) return null;
+    const target = String(targetUsername || '').trim();
+    const targetUser = userStore.getUserByName(target);
+    if (targetUser && isElevatedRole(targetUser.role)) {
+        return '普通管理员不能操作其他管理员账号';
+    }
+    return null;
+}
+
+function getAccountList(ctx: AdminContext, user: any = null): any[] {
+    let accounts: any[] = [];
     try {
         if (ctx.provider && typeof ctx.provider.getAccounts === 'function') {
             const data = ctx.provider.getAccounts();
-            if (Array.isArray(data?.accounts)) return data.accounts;
+            if (Array.isArray(data?.accounts)) accounts = data.accounts;
         }
     } catch {
         // Fall back to persistent storage.
     }
-    const data = store.getAccounts ? store.getAccounts() : { accounts: [] };
-    return Array.isArray(data.accounts) ? data.accounts : [];
+    if (!accounts.length) {
+        const data = store.getAccounts ? store.getAccounts() : { accounts: [] };
+        accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    }
+    // 多用户归属过滤：普通用户只能看到自己的账号
+    if (user && !isSuperAdminRole(user.role)) {
+        accounts = accounts.filter((account: any) => isAccountOwner(account, user));
+    }
+    return accounts;
 }
 
-function getAccountIds(ctx: AdminContext): string[] {
-    return getAccountList(ctx).map((account: any) => String(account.id || '')).filter(Boolean);
+function getAccountIds(ctx: AdminContext, user: any = null): string[] {
+    return getAccountList(ctx, user).map((account: any) => String(account.id || '')).filter(Boolean);
 }
 
 const isSoftRuntimeError = (err: any): boolean => {
@@ -93,18 +201,41 @@ function handleApiError(res: Response, err: any): void {
     res.status(500).json(payload);
 }
 
-function resolveAccId(ctx: AdminContext, rawRef: any): string {
+function resolveAccId(ctx: AdminContext, rawRef: any, user: any = null): string {
     const input = normalizeAccountRef(rawRef);
     if (!input) return '';
+    const isElevated = !user || isSuperAdminRole(user.role);
     if (ctx.provider && typeof ctx.provider.resolveAccountId === 'function') {
         const resolvedByProvider = normalizeAccountRef(ctx.provider.resolveAccountId(input));
-        if (resolvedByProvider) return resolvedByProvider;
+        if (resolvedByProvider && (isElevated || isAccountOwner(findAccountById(getAccountList(ctx, user), resolvedByProvider), user))) {
+            return resolvedByProvider;
+        }
     }
-    return resolveAccountId(getAccountList(ctx), input) || input;
+    const resolved = resolveAccountId(getAccountList(ctx, user), input);
+    if (resolved) return resolved;
+    // 用户隔离：普通用户只能解析自己名下的账号；解析不到（如传了别人的账号 ID）时
+    // 返回空让路由拒绝，绝不能原样返回输入值（否则会越权操作他人账号）
+    return isElevated ? input : '';
+}
+
+function findAccountById(accounts: any[], id: string): any | null {
+    return accounts.find((account: any) => String(account.id) === String(id)) || null;
 }
 
 function getAccId(ctx: AdminContext, req: Request): string {
-    return resolveAccId(ctx, req.headers['x-account-id']);
+    const currentUser = (req as AuthenticatedRequest).currentUser || null;
+    return resolveAccId(ctx, req.headers['x-account-id'], currentUser);
+}
+
+/** 校验请求指定的账号是否归属于当前登录用户（路由内调用） */
+function canAccessAccount(ctx: AdminContext, req: Request, accountId: unknown): boolean {
+    const currentUser = (req as AuthenticatedRequest).currentUser;
+    if (!currentUser) return false;
+    if (isSuperAdminRole(currentUser.role)) return true;
+    const targetId = String(accountId || '').trim();
+    if (!targetId) return false;
+    const account = findAccountById(getAccountList(ctx, currentUser), targetId);
+    return !!account;
 }
 
 function buildKnownFriendGidSettings(accountId: string): {
@@ -127,6 +258,13 @@ module.exports = {
     getClientIp,
     issueToken,
     createAuthRequired,
+    createRequireAdminRole,
+    createRequireSuperAdminRole,
+    requireDangerConfirmation,
+    getAdminUserMutationError,
+    getAccountOwner,
+    isAccountOwner,
+    getSessionRejection,
     getAccountList,
     getAccountIds,
     isSoftRuntimeError,
@@ -135,5 +273,7 @@ module.exports = {
     handleApiError,
     resolveAccId,
     getAccId,
+    canAccessAccount,
     buildKnownFriendGidSettings,
+    USER_ROLES,
 };

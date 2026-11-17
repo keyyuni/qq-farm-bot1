@@ -10,7 +10,7 @@ const { createReloginReminderService } = require('./relogin-reminder');
 const { createRuntimeState } = require('./runtime-state');
 const { createWorkerManager } = require('./worker-manager');
 
-const OPERATION_KEYS = ['harvest', 'farming', 'fertilize', 'plant', 'steal', 'helpFarming', 'taskClaim', 'sell', 'upgrade'];
+const OPERATION_KEYS = ['harvest', 'water', 'weed', 'bug', 'farming', 'fertilize', 'plant', 'steal', 'helpFarming', 'helpWater', 'goldenBugClear', 'goldenBugPut', 'helpWeed', 'helpBug', 'taskClaim', 'sell', 'upgrade', 'levelUp', 'tongQiGift'];
 
 interface RuntimeEngineOptions {
     processRef?: any;

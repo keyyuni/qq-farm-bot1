@@ -2,6 +2,7 @@ import { useStorage } from '@vueuse/core'
 import axios from 'axios'
 import NProgress from 'nprogress'
 import { createRouter, createWebHistory } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import { allMenuRoutes } from './menu'
 import 'nprogress/nprogress.css'
 
@@ -27,8 +28,21 @@ async function ensureTokenValid() {
     timeout: 6000,
   }).then((res) => {
     const ok = !!(res.data && res.data.ok)
-    if (ok)
+    if (ok) {
       validatedToken = token
+      // validate 返回最新角色，同步进本地用户信息（避免本地缓存角色过期导致误判）
+      const role = res.data?.data?.role
+      if (role) {
+        try {
+          const userStore = useUserStore()
+          if (userStore.userInfo && userStore.userInfo.role !== role)
+            userStore.userInfo.role = role
+        }
+        catch {
+          // pinia 尚未激活时忽略（守卫内会再取一次）
+        }
+      }
+    }
     return ok
   }).catch(() => false).finally(() => {
     validatingPromise = null
@@ -89,6 +103,18 @@ router.beforeEach(async (to, _from) => {
     adminToken.value = ''
     validatedToken = ''
     return { name: 'login' }
+  }
+
+  // 角色隔离：superOnly 页面仅超级管理员可访问，越权回概览
+  if (to.meta?.superOnly) {
+    try {
+      const userStore = useUserStore()
+      if (!userStore.isSuperAdmin)
+        return { name: 'dashboard' }
+    }
+    catch {
+      return { name: 'dashboard' }
+    }
   }
 
   return true

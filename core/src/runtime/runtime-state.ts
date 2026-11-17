@@ -113,11 +113,18 @@ function createRuntimeState(options: RuntimeStateOptions) {
                 ops[k] = Number(ops[k]);
             }
         }
+        // 全期累计：透传并规范数值（缺失键由前端按 0 展示）
+        const opsTotalSrc = (src.operationsTotal && typeof src.operationsTotal === 'object') ? src.operationsTotal : {};
+        const opsTotal: Record<string, number> = {};
+        for (const k of operationKeys) {
+            opsTotal[k] = Number(opsTotalSrc[k]) || 0;
+        }
         return {
             ...src,
             accountId,
             accountName,
             operations: ops,
+            operationsTotal: opsTotal,
         };
     }
 
@@ -130,6 +137,7 @@ function createRuntimeState(options: RuntimeStateOptions) {
     function buildDefaultStatus(accountId: string): any {
         const id = String(accountId || '');
         const operations = buildDefaultOperations();
+        const operationsTotal: Record<string, number> = {};
         let totalSteal = 0;
 
         if (id) {
@@ -146,6 +154,12 @@ function createRuntimeState(options: RuntimeStateOptions) {
                 if (typeof saved.totalSteal === 'number') {
                     totalSteal = saved.totalSteal;
                 }
+                // 全期累计跨天不重置
+                if (saved.totalOperations && typeof saved.totalOperations === 'object') {
+                    Object.keys(saved.totalOperations).forEach((k: string) => {
+                        operationsTotal[k] = Number(saved.totalOperations[k]) || 0;
+                    });
+                }
             }
         }
 
@@ -154,6 +168,7 @@ function createRuntimeState(options: RuntimeStateOptions) {
             status: { name: '', level: 0, gold: 0, exp: 0, platform: 'qq' },
             uptime: 0,
             operations,
+            operationsTotal,
             totalSteal,
             sessionExpGained: 0,
             sessionGoldGained: 0,

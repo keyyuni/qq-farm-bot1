@@ -3,6 +3,7 @@ const sharedState = require('./shared-state');
 const globalConfig = require('./global-config');
 const accountConfig = require('./account-config');
 const accounts = require('./accounts');
+const captureConfig = require('./capture-config');
 
 module.exports = {
     // Account config
@@ -61,4 +62,9 @@ module.exports = {
     // System config
     getSystemConfig: globalConfig.getSystemConfig,
     setSystemConfig: globalConfig.setSystemConfig,
+
+    // Capture (抓包登录)
+    getCaptureConfig: captureConfig.getCaptureConfig,
+    setCaptureConfig: captureConfig.setCaptureConfig,
+    DEFAULT_CAPTURE_CONFIG: captureConfig.DEFAULT_CAPTURE_CONFIG,
 };

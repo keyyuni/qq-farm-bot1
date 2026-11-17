@@ -8,6 +8,8 @@ export interface MenuItem {
     fullBleed?: boolean
     gameSpace?: 'ranch'
     ranchSection?: 'personal' | 'illustrated' | 'mall' | 'friends' | 'activity'
+    /** 仅超级管理员可见/可访问，越权回首页 */
+    superOnly?: boolean
   }
 }
 
@@ -74,6 +76,14 @@ export const menuRoutes: MenuItem[] = [
     label: '设置',
     icon: 'i-carbon-settings',
     component: () => import('@/views/Settings.vue'),
+  },
+  {
+    path: 'admin-panel',
+    name: 'admin-panel',
+    label: '管理后台',
+    icon: 'i-carbon-user-admin',
+    component: () => import('@/views/AdminPanel.vue'),
+    meta: { superOnly: true },
   },
 ]
 

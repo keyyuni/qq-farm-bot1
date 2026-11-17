@@ -9,6 +9,7 @@ import Sidebar from '@/components/Sidebar.vue'
 import { SPACE_TRANSITION_STYLE, spaceTransition } from '@/components/space-transition'
 import SpaceTransition from '@/components/SpaceTransition.vue'
 import { useAppStore } from '@/stores/app'
+import AnnouncementPopup from '@/components/AnnouncementPopup.vue'
 
 const appStore = useAppStore()
 const route = useRoute()
@@ -85,6 +86,7 @@ useResizeObserver(scrollEl, measureScrollbar)
 
     <MobileBottomNav v-if="!route.meta.fullBleed" />
     <SpaceTransition />
+    <AnnouncementPopup />
   </div>
 </template>
 

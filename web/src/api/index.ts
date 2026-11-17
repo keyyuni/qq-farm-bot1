@@ -2,6 +2,13 @@ import { useStorage } from '@vueuse/core'
 import axios from 'axios'
 import { useToastStore } from '@/stores/toast'
 
+// 让调用方可以通过 skipErrorToast: true 自行处理错误（拦截器运行时已支持）
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    skipErrorToast?: boolean
+  }
+}
+
 const tokenRef = useStorage('admin_token', '')
 const accountIdRef = useStorage('current_account_id', '')
 

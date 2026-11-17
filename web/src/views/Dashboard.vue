@@ -282,14 +282,23 @@ function formatLogTime(timeStr: string) {
 }
 
 const OP_META: Record<string, { label: string, icon: string, color: string }> = {
-  harvest: { label: '收获', icon: 'i-carbon-wheat', color: 'text-green-500' },
-  farming: { label: '一键务农', icon: 'i-carbon-agriculture-analytics', color: 'text-yellow-500' },
+  harvest: { label: '收获', icon: 'i-carbon-crop-growth', color: 'text-green-500' },
+  water: { label: '浇水', icon: 'i-carbon-rain-drop', color: 'text-blue-400' },
+  weed: { label: '除草', icon: 'i-carbon-cut', color: 'text-yellow-500' },
+  bug: { label: '除虫', icon: 'i-carbon-pest', color: 'text-red-400' },
+  farming: { label: '一键务农', icon: 'i-carbon-clean', color: 'text-teal-500' },
   fertilize: { label: '施肥', icon: 'i-carbon-chemistry', color: 'text-emerald-500' },
-  plant: { label: '种植', icon: 'i-carbon-sprout', color: 'text-lime-500' },
+  plant: { label: '种植', icon: 'i-carbon-tree', color: 'text-lime-500' },
   steal: { label: '偷菜', icon: 'i-carbon-run', color: 'text-orange-500' },
   helpFarming: { label: '帮务农', icon: 'i-carbon-collaborate', color: 'text-yellow-400' },
+  helpWater: { label: '帮浇水', icon: 'i-carbon-rain-drop', color: 'text-blue-300' },
+  goldenBugClear: { label: '清黄金虫', icon: 'i-carbon-clean', color: 'text-amber-500' },
+  goldenBugPut: { label: '放黄金虫', icon: 'i-carbon-pest', color: 'text-yellow-500' },
+  helpWeed: { label: '帮除草', icon: 'i-carbon-cut', color: 'text-yellow-400' },
+  helpBug: { label: '帮除虫', icon: 'i-carbon-pest', color: 'text-red-300' },
   taskClaim: { label: '任务', icon: 'i-carbon-task-complete', color: 'text-indigo-500' },
-  sell: { label: '出售', icon: 'i-carbon-currency-dollar', color: 'text-pink-500' },
+  sell: { label: '出售', icon: 'i-carbon-shopping-cart', color: 'text-pink-500' },
+  tongQiGift: { label: '同气礼包', icon: 'i-carbon-gift', color: 'text-rose-500' },
 }
 
 const filteredOperations = computed(() => {

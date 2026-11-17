@@ -19,6 +19,7 @@ import { getPlatformClass, getPlatformLabel, useAccountStore } from '@/stores/ac
 import { useSettingStore } from '@/stores/setting'
 import { useStatusStore } from '@/stores/status'
 import { useUserStore } from '@/stores/user'
+import AdminPanel from '@/views/AdminPanel.vue'
 
 const fertilizerLandTypeOptions = [
   { label: '蓝晶土地', value: 'blue-crystal' },
@@ -46,13 +47,15 @@ const userStore = useUserStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'admin-panel'
 const storedTab = localStorage.getItem('settings-active-tab')
-const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system']
+const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'admin-panel']
 const queryTab = String(route.query.tab || '')
-const initialTab = settingsTabKeys.includes(queryTab as SettingsTab)
+const initialTabRaw = settingsTabKeys.includes(queryTab as SettingsTab)
   ? queryTab as SettingsTab
   : storedTab === 'user' ? 'system' : (storedTab as SettingsTab) || 'account'
+// 管理后台仅超级管理员可见：无权限用户恢复到该页签时回落到账号管理
+const initialTab = initialTabRaw === 'admin-panel' && !userStore.isSuperAdmin ? 'account' : initialTabRaw
 const activeTab = ref<SettingsTab>(initialTab)
 
 watch(activeTab, (newTab) => {
@@ -75,7 +78,13 @@ const tabs = [
   { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
   { key: 'system', label: '系统设置', icon: 'i-carbon-settings' },
+  { key: 'admin-panel', label: '管理后台', icon: 'i-carbon-user-admin' },
 ] as const
+
+/** 管理后台页签仅超级管理员可见（接口均为对应角色专属） */
+const visibleTabs = computed(() =>
+  tabs.filter(tab => tab.key !== 'admin-panel' || userStore.isSuperAdmin),
+)
 
 function setActiveTab(value: string) {
   if (tabs.some(tab => tab.key === value))
@@ -150,7 +159,11 @@ onMounted(async () => {
   }
   if (currentAccountId.value)
     await loadStrategyData(currentAccountId.value)
-  await Promise.all([loadSystemConfig(), loadDevicePresets()])
+  // 抓包登录配置是管理接口，仅超级管理员加载
+  const loads: Array<Promise<void>> = [loadSystemConfig(), loadDevicePresets()]
+  if (userStore.isSuperAdmin)
+    loads.push(loadCaptureConfig())
+  await Promise.all(loads)
 })
 
 function openSettings(account: any) {
@@ -1303,6 +1316,96 @@ const systemConfigSaving = ref(false)
 const systemConfigLoading = ref(false)
 const loginSettingsSaving = ref(false)
 
+// —— 抓包登录设置（自 qq-farm-bot 移植）——
+const captureConfigLoading = ref(false)
+const captureConfigSaving = ref(false)
+const captureTesting = ref(false)
+const localCaptureConfig = ref({
+  enabled: false,
+  embedded: true,
+  apiBase: 'http://127.0.0.1:8450',
+  apiToken: '',
+  tokenConfigured: false,
+  autoImportQqGids: true,
+  running: false,
+})
+
+function normalizeCaptureConfig(source: any) {
+  return {
+    enabled: source?.enabled === true,
+    embedded: source?.embedded !== false,
+    apiBase: typeof source?.apiBase === 'string' && source.apiBase.trim() ? source.apiBase.trim() : 'http://127.0.0.1:8450',
+    apiToken: '',
+    tokenConfigured: source?.tokenConfigured === true,
+    autoImportQqGids: source?.autoImportQqGids !== false,
+    running: source?.running === true,
+  }
+}
+
+async function loadCaptureConfig() {
+  captureConfigLoading.value = true
+  try {
+    const { data } = await api.get('/api/admin/capture-config', { skipErrorToast: true } as any)
+    if (data?.ok)
+      localCaptureConfig.value = normalizeCaptureConfig(data.data)
+  }
+  catch (e) {
+    console.error('加载抓包登录配置失败:', e)
+  }
+  finally {
+    captureConfigLoading.value = false
+  }
+}
+
+async function handleSaveCaptureConfig() {
+  if (localCaptureConfig.value.enabled
+    && !localCaptureConfig.value.embedded
+    && !localCaptureConfig.value.apiToken.trim()
+    && !localCaptureConfig.value.tokenConfigured) {
+    showAlert('独立模式下启用抓包登录前，请填写抓包服务 API Token', 'danger')
+    return
+  }
+  captureConfigSaving.value = true
+  try {
+    const { data } = await api.post('/api/admin/capture-config', {
+      enabled: localCaptureConfig.value.enabled,
+      embedded: localCaptureConfig.value.embedded,
+      apiBase: localCaptureConfig.value.apiBase.trim(),
+      autoImportQqGids: localCaptureConfig.value.autoImportQqGids,
+      ...(localCaptureConfig.value.apiToken.trim() ? { apiToken: localCaptureConfig.value.apiToken.trim() } : {}),
+    })
+    if (data?.ok)
+      localCaptureConfig.value = normalizeCaptureConfig(data.data)
+    showAlert(data?.ok ? '抓包登录设置已保存' : getApiErrorMessage(data, '保存失败'), data?.ok ? 'primary' : 'danger')
+  }
+  catch (e: any) {
+    showAlert(`保存失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    captureConfigSaving.value = false
+  }
+}
+
+async function handleTestCapture() {
+  captureTesting.value = true
+  try {
+    const { data } = await api.post('/api/admin/capture-config/test', {
+      apiBase: localCaptureConfig.value.apiBase.trim(),
+      ...(localCaptureConfig.value.apiToken.trim() ? { apiToken: localCaptureConfig.value.apiToken.trim() } : {}),
+    })
+    if (data?.ok)
+      showAlert(`连接成功：当前 ${data.data.sessions} 个会话，端口池 ${data.data.portPoolSize} 个端口`, 'primary')
+    else
+      showAlert(getApiErrorMessage(data, '连接失败'), 'danger')
+  }
+  catch (e: any) {
+    showAlert(`连接失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    captureTesting.value = false
+  }
+}
+
 const defaultDeviceInfo = {
   os: 'Windows',
   clientVersion: '',
@@ -1486,7 +1589,7 @@ async function handleResetSystemConfig() {
   <div class="settings-page page-stack">
     <div class="settings-content">
       <PageTabs :value="activeTab" @update:value="setActiveTab">
-        <NTab v-for="tab in tabs" :key="tab.key" :name="tab.key">
+        <NTab v-for="tab in visibleTabs" :key="tab.key" :name="tab.key">
           <span class="inline-flex items-center gap-2">
             <span :class="tab.icon" />
             {{ tab.label }}
@@ -1987,7 +2090,8 @@ async function handleResetSystemConfig() {
           </h3>
 
           <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-            <section class="farm-card rounded-lg p-4">
+            <!-- 运行环境：全局配置，仅超级管理员可见 -->
+            <section v-if="userStore.isSuperAdmin" class="farm-card rounded-lg p-4">
               <div class="mb-4 flex items-start gap-3">
                 <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/25 dark:text-blue-400">
                   <span class="i-carbon-settings-adjust text-xl" />
@@ -2132,7 +2236,8 @@ async function handleResetSystemConfig() {
             </section>
 
             <div class="min-w-0 space-y-4">
-              <section class="farm-card rounded-lg p-4">
+              <!-- 登录设置：仅超级管理员可见（全局登录方式配置） -->
+              <section v-if="userStore.isSuperAdmin" class="farm-card rounded-lg p-4">
                 <div class="mb-4 flex items-start gap-3">
                   <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-900/25 dark:text-violet-400">
                     <span class="i-carbon-login text-xl" />
@@ -2186,6 +2291,79 @@ async function handleResetSystemConfig() {
                 </div>
               </section>
 
+              <!-- 抓包登录设置：仅超级管理员可见（全局抓包服务配置） -->
+              <section v-if="userStore.isSuperAdmin" class="farm-card rounded-lg p-4">
+                <div class="mb-4 flex items-start gap-3">
+                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-900/25 dark:text-sky-400">
+                    <span class="i-carbon-data-connected text-xl" />
+                  </div>
+                  <div>
+                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+                      抓包登录设置
+                    </h4>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      开启后可在添加账号时通过抓包自动获取登录 Code 和 QQ 好友 GID
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                    <BaseSwitch v-model="localCaptureConfig.enabled" label="启用抓包登录" />
+                  </div>
+                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                    <BaseSwitch v-model="localCaptureConfig.autoImportQqGids" label="自动导入 QQ 好友 GID" />
+                  </div>
+                </div>
+
+                <div
+                  v-if="localCaptureConfig.enabled"
+                  class="grid grid-cols-1 mt-4 gap-3 border border-gray-200 rounded-lg bg-gray-50/70 p-4 sm:grid-cols-2 dark:border-gray-700 dark:bg-gray-900/30"
+                >
+                  <div class="border border-gray-200 rounded-lg bg-white/60 p-3 sm:col-span-2 dark:border-gray-700 dark:bg-gray-900/30">
+                    <BaseSwitch v-model="localCaptureConfig.embedded" label="内嵌模式（抓包服务随本面板启动，无需独立部署）" />
+                    <p v-if="localCaptureConfig.embedded" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ localCaptureConfig.running ? '抓包服务运行中' : '抓包服务将在保存后随面板自动启动' }}
+                    </p>
+                  </div>
+                  <template v-if="!localCaptureConfig.embedded">
+                    <BaseInput
+                      v-model="localCaptureConfig.apiBase"
+                      label="抓包服务地址"
+                      type="text"
+                      placeholder="http://127.0.0.1:8450"
+                    />
+                    <BaseInput
+                      v-model="localCaptureConfig.apiToken"
+                      label="API Token"
+                      type="password"
+                      :placeholder="localCaptureConfig.tokenConfigured ? '已配置（留空保持不变）' : '请输入抓包服务 API Token'"
+                    />
+                  </template>
+                </div>
+
+                <div class="mt-3 flex justify-end gap-2 border-t pt-3 dark:border-gray-700">
+                  <BaseButton
+                    variant="outline"
+                    size="sm"
+                    :loading="captureTesting"
+                    :disabled="localCaptureConfig.embedded"
+                    @click="handleTestCapture"
+                  >
+                    测试连接
+                  </BaseButton>
+                  <BaseButton
+                    variant="primary"
+                    size="sm"
+                    :loading="captureConfigSaving"
+                    @click="handleSaveCaptureConfig"
+                  >
+                    保存抓包设置
+                  </BaseButton>
+                </div>
+              </section>
+
+              <!-- 修改密码：所有登录用户可见，只改当前登录账号自己的密码（用户隔离） -->
               <section class="farm-card rounded-lg p-4">
                 <div class="mb-4 flex items-start gap-3">
                   <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400">
@@ -2193,10 +2371,10 @@ async function handleResetSystemConfig() {
                   </div>
                   <div>
                     <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
-                      修改管理员密码
+                      修改密码
                     </h4>
                     <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      更新后台管理登录凭据
+                      修改当前登录账号（{{ userStore.username }}）的登录密码
                     </p>
                   </div>
                 </div>
@@ -2206,7 +2384,7 @@ async function handleResetSystemConfig() {
                     v-model="passwordForm.old"
                     label="当前密码"
                     type="password"
-                    placeholder="当前管理员密码"
+                    placeholder="输入当前登录密码"
                   />
                   <BaseInput
                     v-model="passwordForm.new"
@@ -2229,12 +2407,13 @@ async function handleResetSystemConfig() {
                     :loading="passwordSaving"
                     @click="handleChangePassword"
                   >
-                    修改管理员密码
+                    保存新密码
                   </BaseButton>
                 </div>
               </section>
 
-              <section class="farm-card rounded-lg p-4">
+              <!-- 下线提醒：全局推送配置（Webhook/钉钉），仅超级管理员可见可改 -->
+              <section v-if="userStore.isSuperAdmin" class="farm-card rounded-lg p-4">
                 <div class="mb-4 flex items-start gap-3">
                   <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-600 dark:bg-green-900/25 dark:text-green-400">
                     <span class="i-carbon-notification text-xl" />
@@ -2342,6 +2521,9 @@ async function handleResetSystemConfig() {
             </div>
           </div>
         </div>
+
+        <!-- 管理后台：用户 / 卡密 / 邀请 / 流水 / 日志 / 公告 / 邮件（复用 AdminPanel，仅超级管理员可见） -->
+        <AdminPanel v-else-if="activeTab === 'admin-panel' && userStore.isSuperAdmin" />
       </div>
     </div>
 

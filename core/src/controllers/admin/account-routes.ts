@@ -17,7 +17,16 @@ const {
     handleApiError,
     getAccountList,
     resolveAccId,
+    canAccessAccount,
+    isAccountOwner,
 } = require('./middleware');
+const userStore = require('../../models/user-store');
+const inviteRewards = require('../../services/invite-rewards');
+const { isSuperAdminRole } = require('../../config/user-system');
+
+interface AuthenticatedRequest extends Request {
+    currentUser?: any;
+}
 
 function mountAccountRoutes(app: Application, ctx: AdminContext): void {
 
@@ -25,6 +34,11 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     app.get('/api/accounts', (req: Request, res: Response) => {
         try {
             const data = ctx.provider.getAccounts();
+            const user = (req as AuthenticatedRequest).currentUser || null;
+            // 多用户归属过滤：普通用户只能看到自己的账号
+            if (user && !isSuperAdminRole(user.role) && Array.isArray(data?.accounts)) {
+                data.accounts = data.accounts.filter((account: any) => isAccountOwner(account, user));
+            }
             res.json({ ok: true, data });
         } catch (e: any) {
             handleApiError(res, e);
@@ -36,7 +50,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const rawRef = body.id || body.accountId || body.uin || req.headers['x-account-id'];
-            const accountList = getAccountList(ctx);
+            const accountList = getAccountList(ctx, (req as AuthenticatedRequest).currentUser || null);
             const target = findAccountByRef(accountList, rawRef);
             if (!target || !target.id) {
                 return res.status(404).json({ ok: false, error: 'Account not found' });
@@ -69,7 +83,8 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             if (!requestedName) {
                 return res.status(400).json({ ok: false, error: '账号备注不能为空' });
             }
-            const visibleAccounts = getAccountList(ctx);
+            const currentUser = (req as AuthenticatedRequest).currentUser || null;
+            const visibleAccounts = getAccountList(ctx, currentUser);
             const remarkMatchedAccount = !body.id && requestedName
                 ? visibleAccounts.find((account: any) => String(account.name || '').trim() === requestedName)
                 : null;
@@ -77,8 +92,20 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const updateRef = body.id || (remarkMatchedAccount && remarkMatchedAccount.id) || '';
             const isUpdate = !!updateRef;
 
-            const resolvedUpdateId = isUpdate ? resolveAccId(ctx, updateRef) : '';
+            const resolvedUpdateId = isUpdate ? resolveAccId(ctx, updateRef, currentUser) : '';
+            // 更新已有账号时校验归属：普通用户不能改别人的账号
+            if (isUpdate && !canAccessAccount(ctx, req, resolvedUpdateId || updateRef)) {
+                return res.status(403).json({ ok: false, error: '无权操作该账号' });
+            }
             const payload = isUpdate ? { ...body, id: resolvedUpdateId || String(updateRef) } : body;
+
+            // 新增账号时校验额度：额度卡可提升上限，超级管理员不受限制（-1 表示不限）
+            if (!isUpdate && currentUser && !isSuperAdminRole(currentUser.role)) {
+                const quota = userStore.checkAccountQuota(currentUser, visibleAccounts.length);
+                if (!quota.ok) {
+                    return res.status(403).json({ ok: false, error: quota.error, quota });
+                }
+            }
             let wasRunning = false;
             if (isUpdate && ctx.provider.isAccountRunning) {
                 wasRunning = ctx.provider.isAccountRunning(payload.id);
@@ -99,6 +126,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                 }
             }
 
+            // 创建账号时写入归属（owner），普通用户与超管创建都记录创建者
+            if (!isUpdate && currentUser) {
+                const ownerName = String(currentUser.username || '').trim();
+                if (ownerName) (payload as any).owner = ownerName;
+            }
+
             const data = addOrUpdateAccount(payload);
             if (ctx.provider.addAccountLog) {
                 const accountId = isUpdate ? String(payload.id) : String((data.accounts.at(-1) || {}).id || '');
@@ -116,6 +149,17 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             if (!isUpdate) {
                 const newAcc = data.accounts.at(-1);
                 if (newAcc) ctx.provider.startAccount(newAcc.id);
+                // 新号第一次绑定挂机账号 → 结算邀请人的待定奖励（失败不影响建号）
+                if (currentUser && currentUser.username) {
+                    try {
+                        const createdAccount = newAcc || payload;
+                        inviteRewards.markInviteeBound(currentUser.username, userStore, inviteRewards.identityFromAccount(createdAccount || {}));
+                    } catch (error: any) {
+                        if (ctx.provider.addAccountLog) {
+                            ctx.provider.addAccountLog('info', `邀请奖励结算失败: ${error?.message || error}`, '', '');
+                        }
+                    }
+                }
             } else if (isRemarkRelogin) {
                 // Adding with an existing remark is a relogin operation, including for stopped accounts.
                 ctx.provider.restartAccount(payload.id);
@@ -131,7 +175,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
 
     app.delete('/api/accounts/:id', (req: Request, res: Response) => {
         try {
-            const resolvedId = resolveAccId(ctx, req.params.id) || String(req.params.id || '');
+            const resolvedId = resolveAccId(ctx, req.params.id, (req as AuthenticatedRequest).currentUser || null) || String(req.params.id || '');
+
+            // 归属检查：普通用户不能删除别人的账号
+            if (!canAccessAccount(ctx, req, resolvedId)) {
+                return res.status(403).json({ ok: false, error: '无权操作该账号' });
+            }
 
             const before = ctx.provider.getAccounts();
             const target = findAccountByRef(before.accounts || [], req.params.id);
@@ -153,6 +202,13 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             let list: any[] = ctx.provider.getAccountLogs ? ctx.provider.getAccountLogs(limit) : [];
             if (!Array.isArray(list)) list = [];
 
+            // 用户隔离：普通用户只能看到自己账号的操作日志
+            const logUser = (req as AuthenticatedRequest).currentUser || null;
+            if (logUser && !isSuperAdminRole(logUser.role)) {
+                const ownedIds = new Set(getAccountList(ctx, logUser).map((a: any) => String(a.id || '')).filter(Boolean));
+                list = list.filter((entry: any) => ownedIds.has(String(entry?.accountId || '')));
+            }
+
             // 与当前 web 前端保持一致：直接返回数组
             res.json(list);
         } catch (e: any) {
@@ -163,10 +219,33 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     // API: 日志
     app.get('/api/logs', (req: Request, res: Response) => {
         const queryAccountIdRaw = (req.query.accountId || '').toString().trim();
-        const id = queryAccountIdRaw ? (queryAccountIdRaw === 'all' ? '' : resolveAccId(ctx, queryAccountIdRaw)) : getAccId(ctx, req);
+        const logUser = (req as AuthenticatedRequest).currentUser || null;
+        const id = queryAccountIdRaw ? (queryAccountIdRaw === 'all' ? '' : resolveAccId(ctx, queryAccountIdRaw, logUser)) : getAccId(ctx, req);
+        // 指定 accountId=all 时仍需归属检查：普通用户不能拉取全部账号日志
+        if (queryAccountIdRaw === 'all' && logUser && !isSuperAdminRole(logUser.role)) {
+            const accounts = getAccountList(ctx, logUser);
+            const accountIds = accounts.map((a: any) => String(a.id || '')).filter(Boolean);
+            const allLogs: any[] = [];
+            const options = {
+                limit: Number.parseInt(req.query.limit as string) || 100,
+                tag: req.query.tag || '',
+                module: req.query.module || '',
+                event: req.query.event || '',
+                keyword: req.query.keyword || '',
+                isWarn: req.query.isWarn,
+                timeFrom: req.query.timeFrom || '',
+                timeTo: req.query.timeTo || '',
+            };
+            for (const accId of accountIds) {
+                const logs = ctx.provider.getLogs(accId, options);
+                if (Array.isArray(logs)) allLogs.push(...logs);
+            }
+            allLogs.sort((a: any, b: any) => (b.time || 0) - (a.time || 0));
+            return res.json({ ok: true, data: allLogs.slice(0, options.limit) });
+        }
         // 如果没有指定账号ID，获取所有账号的日志
         if (!id) {
-            const accountIds = getAccountIds(ctx);
+            const accountIds = getAccountIds(ctx, (req as AuthenticatedRequest).currentUser || null);
             const allLogs: any[] = [];
             const options = {
                 limit: Number.parseInt(req.query.limit as string) || 100,
@@ -262,8 +341,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 设置面板主题
+    // API: 设置面板主题（全局 UI 状态，仅超级管理员可写）
     app.post('/api/settings/theme', async (req: Request, res: Response) => {
+        const themeUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!themeUser || !isSuperAdminRole(themeUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可修改全局主题' });
+        }
         try {
             const theme = String((req.body || {}).theme || '');
             const data = await ctx.provider.setUITheme(theme);
@@ -273,8 +356,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 保存下线提醒配置
+    // API: 保存下线提醒配置（全局推送配置，仅超级管理员）
     app.post('/api/settings/offline-reminder', async (req: Request, res: Response) => {
+        const reminderUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!reminderUser || !isSuperAdminRole(reminderUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可修改下线提醒配置' });
+        }
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const channel = String(body.channel || '').trim().toLowerCase();
@@ -293,8 +380,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 测试下线提醒推送（不落盘）
+    // API: 测试下线提醒推送（不落盘；服务器会向配置地址发起请求，仅超级管理员）
     app.post('/api/settings/offline-reminder/test', async (req: Request, res: Response) => {
+        const testUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!testUser || !isSuperAdminRole(testUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可测试下线提醒推送' });
+        }
         try {
             const saved = store.getOfflineReminder ? store.getOfflineReminder() : {};
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -379,9 +470,14 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const autoAcceptHarvestStealHarvest = id && (typeof store.getAutoAcceptHarvestStealHarvest === 'function') ? store.getAutoAcceptHarvestStealHarvest(id) : 8;
             const autoAcceptHarvestStealSteal = id && (typeof store.getAutoAcceptHarvestStealSteal === 'function') ? store.getAutoAcceptHarvestStealSteal(id) : 1;
             const ui = store.getUI();
-            const offlineReminder = store.getOfflineReminder
+            let offlineReminder = store.getOfflineReminder
                 ? store.getOfflineReminder()
                 : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
+            // 用户隔离：全局推送凭据（token/secret）仅超级管理员可见
+            const settingsUser = (req as AuthenticatedRequest).currentUser || null;
+            if (!settingsUser || !isSuperAdminRole(settingsUser.role)) {
+                offlineReminder = { ...offlineReminder, endpoint: '', token: '', secret: '' };
+            }
             res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, ui, offlineReminder } });
         } catch (e: any) {
             handleApiError(res, e);
@@ -428,18 +524,28 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    app.get('/api/settings/login-config', (_req: Request, res: Response) => {
+    app.get('/api/settings/login-config', (req: Request, res: Response) => {
         try {
             const loginSettings = store.getLoginSettings
                 ? store.getLoginSettings()
                 : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '' };
+            // 用户隔离：NapCat 服务地址与签名密钥仅超级管理员可见（普通用户只需开关状态）
+            const loginConfigUser = (req as AuthenticatedRequest).currentUser || null;
+            if (!loginConfigUser || !isSuperAdminRole(loginConfigUser.role)) {
+                return res.json({ ok: true, data: { wechatQrLogin: loginSettings.wechatQrLogin, qqQrLogin: loginSettings.qqQrLogin, napCatEndpoint: '', napCatSignature: '' } });
+            }
             res.json({ ok: true, data: loginSettings });
         } catch (e: any) {
             handleApiError(res, e);
         }
     });
 
+    // 全局登录方式配置：仅超级管理员可修改
     app.post('/api/settings/login-config', (req: Request, res: Response) => {
+        const currentUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!currentUser || !isSuperAdminRole(currentUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可修改登录设置' });
+        }
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const loginSettings = store.setLoginSettings
@@ -456,7 +562,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
+    // 全局运行环境配置：仅超级管理员可修改
     app.post('/api/settings/system-config', (req: Request, res: Response) => {
+        const currentUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!currentUser || !isSuperAdminRole(currentUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可修改系统配置' });
+        }
         try {
             const { serverUrl, clientVersion, wxClientVersion, platform, os, timeZone, deviceInfo } = req.body || {};
             const saved = store.setSystemConfig({ serverUrl, clientVersion, wxClientVersion, platform, os, timeZone, deviceInfo });
@@ -471,7 +582,11 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    app.post('/api/settings/system-config/reset', (_req: Request, res: Response) => {
+    app.post('/api/settings/system-config/reset', (req: Request, res: Response) => {
+        const currentUser = (req as AuthenticatedRequest).currentUser || null;
+        if (!currentUser || !isSuperAdminRole(currentUser.role)) {
+            return res.status(403).json({ ok: false, error: '仅超级管理员可重置系统配置' });
+        }
         try {
             const saved = getDefaultSystemConfig();
             store.setSystemConfig(saved);

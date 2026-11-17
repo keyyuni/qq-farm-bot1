@@ -415,3 +415,31 @@ message FarmSocialEventsNotify {
     repeated FarmSocialEvent social_events = 1;
     int64 host_gid = 2;
 }
+
+// ============================================================================
+// 抓包协议补充（源自 qq-farm-bot 抓包分析）。
+// ============================================================================
+
+message SocialItem {
+    int64 item_id = 1;
+    int64 count = 2;
+    int64 type = 3;
+    int64 owner_gid = 4;
+    int64 created_at = 5;
+}
+message SocialItemResult {
+    int64 land_id = 1;
+    repeated corepb.Item items = 2;
+}
+message FertilizerUse {
+    int64 field_1 = 1;
+    corepb.Item consumed = 3;
+}
+message CheckCanOperateRequest {
+    int64 host_gid = 1;
+    int64 operation_id = 2;
+}
+message CheckCanOperateReply {
+    bool can_operate = 1;
+    int64 can_steal_num = 2;
+}

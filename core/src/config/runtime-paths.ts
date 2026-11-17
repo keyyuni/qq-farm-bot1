@@ -26,6 +26,9 @@ function getAppRootForWritable(): string {
 }
 
 function getDataDir(): string {
+    // 支持通过环境变量重定向数据目录（用于测试隔离，避免污染真实数据）
+    const envDataDir = String(process.env.FARM_DATA_DIR || '').trim();
+    if (envDataDir) return path.resolve(envDataDir);
     return path.join(getAppRootForWritable(), 'data');
 }
 

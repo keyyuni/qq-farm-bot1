@@ -9,11 +9,14 @@ const SocketIOServer = Server;
 
 const {
     resolveAccId,
+    getAccountList,
 } = require('./middleware');
 
 function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: string = ''): void {
     const incoming = String(accountRef || '').trim();
-    const resolved = incoming && incoming !== 'all' ? resolveAccId(ctx, incoming) : '';
+    const user = socket.data.user || null;
+    // 用户隔离：resolveAccId 传入当前用户，普通用户解析他人账号会得到空
+    const resolved = incoming && incoming !== 'all' ? resolveAccId(ctx, incoming, user) : '';
 
     for (const room of socket.rooms) {
         if (room.startsWith('account:')) socket.leave(room);
@@ -21,7 +24,11 @@ function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: str
     if (resolved) {
         socket.join(`account:${resolved}`);
         socket.data.accountId = resolved;
+    } else if (!user) {
+        socket.join('account:all');
+        socket.data.accountId = '';
     } else {
+        // 登录用户未指定（或无权访问）账号：加入个人聚合房间，推送按归属过滤
         socket.join('account:all');
         socket.data.accountId = '';
     }
@@ -36,6 +43,11 @@ function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: str
         if (ctx.provider && typeof ctx.provider.getLogs === 'function') {
             let currentLogs: any[] = ctx.provider.getLogs(targetId, { limit: 100 });
             if (!Array.isArray(currentLogs)) currentLogs = [];
+            // 用户隔离：聚合视图（account:all）按归属过滤日志
+            if (!targetId && user) {
+                const ownedIds = new Set(getAccountList(ctx, user).map((a: any) => String(a.id || '')).filter(Boolean));
+                currentLogs = currentLogs.filter((entry: any) => ownedIds.has(String(entry?.accountId || '')));
+            }
 
             socket.emit('logs:snapshot', {
                 accountId: targetId || 'all',
@@ -45,6 +57,11 @@ function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: str
         if (ctx.provider && typeof ctx.provider.getAccountLogs === 'function') {
             let currentAccountLogs: any[] = ctx.provider.getAccountLogs(100);
             if (!Array.isArray(currentAccountLogs)) currentAccountLogs = [];
+            // 用户隔离：账号操作日志只推自己账号的
+            if (user) {
+                const ownedIds = new Set(getAccountList(ctx, user).map((a: any) => String(a.id || '')).filter(Boolean));
+                currentAccountLogs = currentAccountLogs.filter((entry: any) => ownedIds.has(String(entry?.accountId || '')));
+            }
 
             socket.emit('account-logs:snapshot', {
                 logs: currentAccountLogs,
@@ -76,7 +93,13 @@ function setupSocketIO(ctx: AdminContext): void {
         if (!token || !ctx.tokens.has(token)) {
             return next(new Error('Unauthorized'));
         }
+        // 用户隔离：识别连接者身份（多用户会话），普通用户只能订阅/接收自己账号的推送
+        const session = ctx.sessions.get(token) || null;
+        if (!session) {
+            return next(new Error('Unauthorized'));
+        }
         socket.data.adminToken = token;
+        socket.data.user = session;
         return next();
     });
 

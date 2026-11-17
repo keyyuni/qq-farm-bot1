@@ -1,0 +1,114 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import api from '@/api'
+import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseSwitch from '@/components/ui/BaseSwitch.vue'
+import { useToastStore } from '@/stores/toast'
+
+const toast = useToastStore()
+
+const content = ref('')
+const showOnce = ref(true)
+const updatedAt = ref(0)
+const loading = ref(false)
+const saving = ref(false)
+
+function formatEpochMinute(ts: number): string {
+  if (!ts)
+    return ''
+  return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+}
+
+const updatedAtText = computed(() => {
+  // 后端存的是毫秒（Date.now()），不是秒；老数据如果给了秒，formatEpochMinute 自己会判断
+  const text = formatEpochMinute(updatedAt.value)
+  return text ? `最近更新：${text}` : '尚未发布过公告'
+})
+
+async function load() {
+  loading.value = true
+  try {
+    const res = await api.get('/api/admin/announcement', { skipErrorToast: true })
+    if (res.data?.ok) {
+      content.value = res.data.data?.content || ''
+      showOnce.value = res.data.data?.showOnce !== false
+      updatedAt.value = Number(res.data.data?.updatedAt) || 0
+    }
+    else {
+      toast.error(res.data?.error || '读取公告失败')
+    }
+  }
+  catch {
+    toast.error('读取公告失败')
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function save() {
+  if (saving.value)
+    return
+  saving.value = true
+  try {
+    const res = await api.post('/api/admin/announcement', {
+      content: content.value,
+      showOnce: showOnce.value,
+    }, { skipErrorToast: true })
+    if (res.data?.ok) {
+      updatedAt.value = Number(res.data.data?.updatedAt) || Date.now()
+      toast.success(content.value.trim() ? '公告已保存，用户登录后会看到' : '公告已清空')
+    }
+    else {
+      toast.error(res.data?.error || '保存公告失败')
+    }
+  }
+  catch {
+    toast.error('保存公告失败')
+  }
+  finally {
+    saving.value = false
+  }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <section class="farm-card rounded-2xl bg-white p-5 shadow-md dark:bg-gray-800">
+    <header class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 class="flex items-center gap-2 text-base text-gray-900 font-semibold dark:text-gray-100">
+          <span class="i-carbon-notification text-lg text-emerald-500" />
+          系统公告
+        </h3>
+        <p class="mt-1 text-xs text-gray-500">
+          公告会以弹窗形式在用户登录后展示，清空内容即关闭公告。{{ updatedAtText }}
+        </p>
+      </div>
+      <BaseButton :loading="saving" @click="save">
+        保存公告
+      </BaseButton>
+    </header>
+
+    <div v-if="loading" class="py-8 text-center text-sm text-gray-400">
+      正在加载公告…
+    </div>
+
+    <template v-else>
+      <textarea
+        v-model="content"
+        rows="8"
+        maxlength="4000"
+        placeholder="在这里填写公告内容，支持换行。"
+        class="w-full resize-y rounded-xl border px-3 py-2.5 text-sm leading-relaxed outline-none transition focus:border-emerald-500"
+        style="border-color: var(--ui-border); background: var(--ui-surface-strong, #fff); color: var(--ui-ink);"
+      />
+
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <BaseSwitch v-model="showOnce" label="每个账号确认一次后不再提示" />
+        <span class="text-xs text-gray-400">{{ content.length }} / 4000</span>
+      </div>
+    </template>
+  </section>
+</template>

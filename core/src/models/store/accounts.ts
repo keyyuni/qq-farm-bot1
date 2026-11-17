@@ -66,6 +66,20 @@ function normalizeAccount(raw: any): Account {
     };
     const nick = String(source.nick || '').trim();
     if (nick) account.nick = nick;
+    // 账号归属（多用户体系）：优先 owner，兼容旧数据使用 username
+    const owner = String(source.owner || '').trim();
+    if (owner) account.owner = owner;
+    else {
+        const legacyOwner = String(source.username || '').trim();
+        if (legacyOwner) account.owner = legacyOwner;
+    }
+    // 抓包登录（capture）附加字段：好友 GID / openId / 登录方式
+    const gid = String(source.gid || '').trim();
+    if (gid) account.gid = gid;
+    const openId = String(source.openId || '').trim();
+    if (openId) account.openId = openId;
+    const loginType = String(source.loginType || '').trim();
+    if (loginType) account.loginType = loginType;
     return account;
 }
 
@@ -75,7 +89,7 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
     let touchedAccountId = '';
     const source: any = acc || {};
     const cleanAccount: any = {};
-    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick']) {
+    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'owner', 'gid', 'openId', 'loginType']) {
         if (source[key] !== undefined) cleanAccount[key] = source[key];
     }
     acc = cleanAccount;
@@ -96,6 +110,10 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
             uin: acc.uin ? String(acc.uin) : '',
             qq: acc.qq ? String(acc.qq) : (acc.uin ? String(acc.uin) : ''),
             avatar: acc.avatar || acc.avatarUrl || '',
+            ...(acc.owner ? { owner: String(acc.owner) } : {}),
+            ...(acc.gid ? { gid: String(acc.gid) } : {}),
+            ...(acc.openId ? { openId: String(acc.openId) } : {}),
+            ...(acc.loginType ? { loginType: String(acc.loginType) } : {}),
             createdAt: Date.now(),
             updatedAt: Date.now(),
         });

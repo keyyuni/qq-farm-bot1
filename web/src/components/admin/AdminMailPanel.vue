@@ -1,0 +1,340 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import api from '@/api'
+import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseInput from '@/components/ui/BaseInput.vue'
+import BaseSwitch from '@/components/ui/BaseSwitch.vue'
+import { useToastStore } from '@/stores/toast'
+
+const toast = useToastStore()
+
+interface Recipient {
+  username: string
+  role: string
+  isExpired: boolean
+  expiresAtText: string
+  email: string
+  emailSource: 'reminder' | 'profile' | ''
+}
+
+const recipients = ref<Recipient[]>([])
+const loading = ref(false)
+const sending = ref(false)
+const keyword = ref('')
+const onlyWithEmail = ref(true)
+const includeExpired = ref(false)
+const selected = ref<string[]>([])
+
+const subject = ref('')
+const content = ref('')
+const result = ref<{ sent: number, failed: number, skipped: { username: string, reason: string }[] } | null>(null)
+
+interface MailTemplate {
+  key: string
+  label: string
+  subject: string
+  content: string
+}
+
+const templates: MailTemplate[] = [
+  {
+    key: 'maintenance',
+    label: '维护更新',
+    subject: '【维护通知】QQ 农场智能助手今晚维护，维护后需要重新登录账号',
+    content: `你好：
+
+QQ 农场智能助手计划于今晚进行版本更新维护。
+
+维护时间：20:00 - 21:00
+影响范围：维护期间面板、挂机任务与掉线提醒会短暂中断。
+
+维护完成后，需要重新登录账号才能继续挂机：
+1. 打开面板，进入「设置 → 账号管理」；
+2. 找到对应账号，点击「重新登录」，按提示重新扫码或输入验证码；
+3. 登录成功后，挂机任务会自动恢复。
+
+如果维护结束后账号仍显示离线，请刷新页面后重试一次。
+
+—— QQ 农场智能助手`,
+  },
+  {
+    key: 'expire',
+    label: '续费提醒',
+    subject: '【续费提醒】你的账号即将到期',
+    content: `你好：
+
+你的 QQ 农场智能助手账号即将到期。
+
+到期后将无法继续挂机，已添加的农场账号会停止运行，但数据会保留。
+如需继续使用，请在「设置 → 卡密续费」中输入新的卡密完成续费。
+
+续费后无需重新登录，挂机任务会自动恢复。
+
+—— QQ 农场智能助手`,
+  },
+  {
+    key: 'update',
+    label: '功能更新',
+    subject: '【版本更新】QQ 农场智能助手已更新，建议刷新面板体验',
+    content: `你好：
+
+QQ 农场智能助手已完成版本更新。
+
+更新后建议：
+1. 打开面板后按 Ctrl + F5 强制刷新，避免浏览器缓存旧页面；
+2. 如果功能异常，可在「设置 → 账号管理」里对账号执行一次「重新登录」。
+
+—— QQ 农场智能助手`,
+  },
+  {
+    key: 'incident',
+    label: '服务恢复',
+    subject: '【服务恢复】QQ 农场智能助手已恢复正常',
+    content: `你好：
+
+此前一段时间面板出现的异常已经修复，服务已恢复正常。
+
+如果你的账号仍显示离线或任务没有运行，请按以下步骤处理：
+1. 刷新页面；
+2. 在「设置 → 账号管理」对该账号点击「重新登录」；
+3. 如仍有问题，可通过面板首页的反馈入口联系我们。
+
+—— QQ 农场智能助手`,
+  },
+]
+
+function applyTemplate(template: MailTemplate) {
+  subject.value = template.subject
+  content.value = template.content
+}
+
+const filtered = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return recipients.value.filter((item) => {
+    if (onlyWithEmail.value && !item.email)
+      return false
+    if (!includeExpired.value && item.isExpired)
+      return false
+    if (!kw)
+      return true
+    return item.username.toLowerCase().includes(kw) || item.email.toLowerCase().includes(kw)
+  })
+})
+
+const selectableCount = computed(() => filtered.value.length)
+const allSelected = computed(() => selectableCount.value > 0 && filtered.value.every(item => selected.value.includes(item.username)))
+
+async function loadRecipients() {
+  loading.value = true
+  try {
+    const res = await api.get('/api/admin/mail-recipients', { skipErrorToast: true })
+    if (res.data?.ok) {
+      recipients.value = Array.isArray(res.data.data) ? res.data.data : []
+      // 默认：已过期用户不勾选（列表里也不显示，除非手动打开开关）
+      selected.value = selected.value.filter(name => recipients.value.some(item => item.username === name))
+    }
+    else {
+      toast.error(res.data?.error || '读取用户列表失败')
+    }
+  }
+  catch (error: any) {
+    toast.error(error?.response?.data?.error || '读取用户列表失败')
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+function toggleAll() {
+  if (allSelected.value) {
+    const visible = new Set(filtered.value.map(item => item.username))
+    selected.value = selected.value.filter(name => !visible.has(name))
+    return
+  }
+  const next = new Set(selected.value)
+  for (const item of filtered.value) next.add(item.username)
+  selected.value = [...next]
+}
+
+function toggleOne(username: string) {
+  if (selected.value.includes(username))
+    selected.value = selected.value.filter(name => name !== username)
+  else
+    selected.value = [...selected.value, username]
+}
+
+async function sendMail() {
+  if (sending.value)
+    return
+  if (!subject.value.trim()) {
+    toast.error('请填写邮件主题')
+    return
+  }
+  if (!content.value.trim()) {
+    toast.error('请填写邮件内容')
+    return
+  }
+  if (!selected.value.length) {
+    toast.error('请至少选择一个收件用户')
+    return
+  }
+  sending.value = true
+  result.value = null
+  try {
+    const res = await api.post('/api/admin/mail/send', {
+      usernames: selected.value,
+      subject: subject.value.trim(),
+      content: content.value,
+      includeExpired: includeExpired.value,
+    }, { skipErrorToast: true, timeout: 120000 })
+    if (res.data?.ok) {
+      result.value = res.data.data
+      toast.success(res.data.message || '发送完成')
+    }
+    else {
+      toast.error(res.data?.error || '发送失败')
+    }
+  }
+  catch (error: any) {
+    toast.error(error?.response?.data?.error || '发送失败')
+  }
+  finally {
+    sending.value = false
+  }
+}
+
+onMounted(loadRecipients)
+</script>
+
+<template>
+  <div class="space-y-4">
+    <div class="farm-card rounded-2xl bg-white p-4 shadow-md dark:bg-gray-800">
+      <div class="mb-1 flex flex-wrap items-center gap-2">
+        <span class="i-carbon-send-alt text-lg" style="color: var(--theme-primary);" />
+        <h2 class="text-base text-gray-900 font-semibold dark:text-gray-100">
+          发送通知邮件
+        </h2>
+        <span class="text-xs text-gray-400">使用「设置 → 抓包登录设置」下方的 SMTP 邮件配置</span>
+      </div>
+      <p class="mb-3 text-xs text-gray-500 leading-relaxed dark:text-gray-400">
+        收件地址取用户账号资料里的邮箱。默认不发送给已过期用户，需要时可在下方打开「包含已过期用户」。
+      </p>
+
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <span class="text-xs text-gray-500 dark:text-gray-400">常用模板：</span>
+        <button
+          v-for="template in templates"
+          :key="template.key"
+          type="button"
+          class="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 transition hover:border-emerald-500 hover:text-emerald-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+          @click="applyTemplate(template)"
+        >
+          {{ template.label }}
+        </button>
+        <span class="text-xs text-gray-400">点击填入主题与正文，可继续修改</span>
+      </div>
+
+      <div class="space-y-3">
+        <BaseInput v-model="subject" label="邮件主题" type="text" placeholder="例如：系统维护通知" />
+        <div class="flex flex-col gap-1.5">
+          <span class="text-sm text-gray-700 font-medium dark:text-gray-300">邮件内容</span>
+          <textarea
+            v-model="content"
+            rows="6"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-gray-700 dark:bg-gray-800"
+            placeholder="支持多行文本，会原样作为邮件正文发送"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="farm-card rounded-2xl bg-white p-4 shadow-md dark:bg-gray-800">
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <h3 class="text-sm text-gray-900 font-semibold dark:text-gray-100">
+          收件人
+        </h3>
+        <span class="text-xs text-gray-500 dark:text-gray-400">
+          已选 <b class="text-emerald-600">{{ selected.length }}</b> / 可选 {{ selectableCount }}
+        </span>
+        <span v-if="loading" class="text-xs text-gray-400">读取中…</span>
+        <BaseButton variant="text" size="sm" :disabled="loading" @click="loadRecipients">
+          刷新列表
+        </BaseButton>
+      </div>
+
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <div class="min-w-[200px] flex-1">
+          <BaseInput v-model="keyword" type="text" placeholder="搜索用户名或邮箱" label="" />
+        </div>
+        <BaseSwitch v-model="onlyWithEmail" label="只看有邮箱的" />
+        <BaseSwitch v-model="includeExpired" label="包含已过期用户" />
+        <BaseButton variant="secondary" size="sm" :disabled="!selectableCount" @click="toggleAll">
+          {{ allSelected ? '取消全选' : '全选当前列表' }}
+        </BaseButton>
+      </div>
+
+      <div class="custom-scrollbar max-h-[420px] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+        <label
+          v-for="item in filtered"
+          :key="item.username"
+          class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
+        >
+          <input
+            type="checkbox"
+            class="h-4 w-4 accent-emerald-500"
+            :checked="selected.includes(item.username)"
+            @change="toggleOne(item.username)"
+          >
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm text-gray-900 dark:text-gray-100">{{ item.username }}</span>
+              <span v-if="item.role === 'super_admin'" class="rounded bg-purple-100 px-1.5 text-[11px] text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">超管</span>
+              <span v-if="item.isExpired" class="rounded bg-red-100 px-1.5 text-[11px] text-red-600 dark:bg-red-900/40 dark:text-red-300">
+                已过期{{ item.expiresAtText ? ` · ${item.expiresAtText}` : '' }}
+              </span>
+            </div>
+            <div class="text-xs" :class="item.email ? 'text-gray-500 dark:text-gray-400' : 'text-orange-500'">
+              {{ item.email || '未填写邮箱（请管理员在用户管理里补邮箱）' }}
+            </div>
+          </div>
+        </label>
+
+        <div v-if="!filtered.length" class="px-3 py-6 text-center text-xs text-gray-400">
+          没有匹配的用户
+        </div>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 dark:border-gray-700">
+        <span class="text-xs text-gray-500 dark:text-gray-400">
+          发送时每封之间间隔约 0.3 秒，请勿一次选择过多用户
+        </span>
+        <BaseButton variant="primary" size="sm" :loading="sending" :disabled="!selected.length" @click="sendMail">
+          发送给 {{ selected.length }} 位用户
+        </BaseButton>
+      </div>
+
+      <div v-if="result" class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-800/60">
+        <div class="mb-1 text-gray-700 dark:text-gray-200">
+          发送结果：成功 <b class="text-green-600">{{ result.sent }}</b>，
+          失败 <b class="text-red-500">{{ result.failed }}</b>，
+          跳过 <b>{{ result.skipped.length }}</b>
+        </div>
+        <ul v-if="result.skipped.length" class="max-h-40 list-disc space-y-0.5 overflow-y-auto pl-4 text-gray-500 dark:text-gray-400">
+          <li v-for="item in result.skipped" :key="item.username">
+            {{ item.username }} — {{ item.reason }}
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.35);
+  border-radius: 3px;
+}
+</style>

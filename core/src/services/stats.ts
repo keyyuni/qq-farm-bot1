@@ -41,29 +41,50 @@ function savePersistedStats(accountId: string, data: any): void {
 interface OperationsMap {
     [key: string]: number;
     harvest: number;
+    water: number;
+    weed: number;
+    bug: number;
     farming: number;
     fertilize: number;
     plant: number;
     steal: number;
     helpFarming: number;
+    helpWater: number;
+    goldenBugClear: number;
+    goldenBugPut: number;
+    helpWeed: number;
+    helpBug: number;
     taskClaim: number;
     sell: number;
     upgrade: number;
     levelUp: number;
+    tongQiGift: number;
 }
 
 const operations: OperationsMap = {
     harvest: 0,
+    water: 0,
+    weed: 0,
+    bug: 0,
     farming: 0,
     fertilize: 0,
     plant: 0,
     steal: 0,
     helpFarming: 0,
+    helpWater: 0,
+    goldenBugClear: 0,
+    goldenBugPut: 0,
+    helpWeed: 0,
+    helpBug: 0,
     taskClaim: 0,
     sell: 0,
     upgrade: 0,
     levelUp: 0,
+    tongQiGift: 0,
 };
+
+/** 全期累计操作计数（跨天不重置，供「账号统计」卡片展示） */
+const totalOperations: Record<string, number> = {};
 
 let currentDateKey: string | null = null;
 
@@ -116,6 +137,7 @@ function recordOperation(type: string, count: number = 1): void {
     checkAndResetDailyStats();
     if (operations[type] !== undefined) {
         operations[type] += count;
+        totalOperations[type] = (totalOperations[type] || 0) + count;
         scheduleSave();
     }
 }
@@ -147,6 +169,7 @@ function doSave(): void {
     const data: any = {
         date: todayKey,
         operations: { ...operations },
+        totalOperations: { ...totalOperations },
         initialState: { ...initialState },
         savedAt: Date.now(),
     };
@@ -187,6 +210,12 @@ function initStatsWithPersistence(accountId: string, gold: number, exp: number, 
             console.warn(`[统计] 日期已变更，重置统计 (${saved.date} -> ${todayKey})`);
         }
     }
+
+    // 全期累计跨天不重置：无论是否同一天都恢复
+    const savedTotals: any = saved && saved.totalOperations && typeof saved.totalOperations === 'object' ? saved.totalOperations : {};
+    Object.keys(savedTotals).forEach((key: string) => {
+        totalOperations[key] = Number(savedTotals[key]) || 0;
+    });
 
     initStats(gold, exp, coupon);
 }
@@ -282,6 +311,7 @@ function getStats(statusData: any, userState: any, connected: boolean, limits: a
         uptime: process.uptime(),
         sessionElapsedSeconds: Math.max(0, (Date.now() - sessionStartedAt) / 1000),
         operations: operationsSnapshot,
+        operationsTotal: { ...totalOperations },
         sessionExpGained: session.expGained,
         sessionGoldGained: session.goldGained,
         sessionCouponGained: session.couponGained,

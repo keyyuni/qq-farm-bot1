@@ -25,3 +25,11 @@ message WeatherChangeNotify {
     WeatherStatus weather = 1;
     int64 host_gid = 2;
 }
+
+// ============================================================================
+// 抓包协议补充（源自 qq-farm-bot 抓包分析）：天气 RPC 声明。
+// ============================================================================
+
+service WeatherService {
+    rpc GetWeatherStatus(GetWeatherStatusRequest) returns (GetWeatherStatusReply);
+}

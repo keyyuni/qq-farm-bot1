@@ -1,27 +1,65 @@
 <script setup lang="ts">
+import type { ApiResult } from '@/stores/user'
 import { computed, onMounted, ref } from 'vue'
-import api, { getApiErrorMessage } from '@/api'
+import api from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import LoginRenewModal from '@/components/LoginRenewModal.vue'
+import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
 
 declare const __APP_VERSION__: string
 
+type TabKey = 'login' | 'register' | 'reset'
+
 const userStore = useUserStore()
+const toast = useToastStore()
 const appVersion = __APP_VERSION__
 const gameVersion = ref('')
 const wxGameVersion = ref('')
-const username = ref('')
-const password = ref('')
-const error = ref('')
-const success = ref('')
+
+const GITHUB_URL = 'https://github.com/liyangpengs/qq-farm-bot'
+
+const tab = ref<TabKey>('login')
 const loading = ref(false)
+const showRenew = ref(false)
 const lockoutRemaining = ref(0)
 const rateLimitRemaining = ref(0)
+const errorMessage = ref('')
+
+// 登录
+const username = ref('')
+const password = ref('')
+
+// 注册
+const registerForm = ref({ username: '', password: '', confirm: '', cardCode: '', inviteCode: '' })
+const invitePreview = ref<{ valid: boolean, inviteeDays?: number, inviterDays?: number, reason?: string } | null>(null)
+const checkingInvite = ref(false)
+const invitePreviewText = computed(() => {
+  const reason = invitePreview.value?.reason || ''
+  if (reason === 'disabled')
+    return '管理员暂未开启邀请奖励，邀请码先留着'
+  if (reason === 'code_not_found')
+    return '邀请码不存在，请核对后重填（不填也能注册）'
+  return '邀请码无效，不填也能注册'
+})
+const cardPreview = ref<{ ok: boolean, error?: string, data?: any } | null>(null)
+const checkingCard = ref(false)
+const claimingCard = ref(false)
+
+// 找回密码
+const resetStep = ref<1 | 2>(1)
+const resetForm = ref({ username: '', cardCode: '', newPassword: '' })
+
+const tabs: { key: TabKey, label: string }[] = [
+  { key: 'login', label: '登录' },
+  { key: 'register', label: '注册' },
+  { key: 'reset', label: '找回密码' },
+]
 
 const usernameValid = computed(() => {
-  const name = username.value
+  const name = tab.value === 'login' ? username.value : registerForm.value.username
   if (!name)
     return { valid: false, message: '' }
   if (name.length < 3)
@@ -33,77 +71,234 @@ const usernameValid = computed(() => {
   return { valid: true, message: '' }
 })
 
-function validateForm(): boolean {
-  if (!username.value) {
-    error.value = '请输入用户名'
+const passwordMismatch = computed(
+  () => registerForm.value.confirm.length > 0
+    && registerForm.value.password !== registerForm.value.confirm,
+)
+
+const canSubmit = computed(() => {
+  if (loading.value)
     return false
+  if (tab.value === 'login')
+    return !!username.value && !!password.value
+  if (tab.value === 'register') {
+    return !!registerForm.value.username
+      && !!registerForm.value.password
+      && !passwordMismatch.value
+      && !!registerForm.value.cardCode
   }
-  if (!usernameValid.value.valid) {
-    error.value = usernameValid.value.message
-    return false
+  return !!resetForm.value.username && !!resetForm.value.cardCode
+    && (resetStep.value === 1 || !!resetForm.value.newPassword)
+})
+
+const submitLabel = computed(() => {
+  if (tab.value === 'login')
+    return '登录'
+  if (tab.value === 'register')
+    return '注册并激活'
+  return resetStep.value === 1 ? '验证身份' : '重置密码'
+})
+
+function showResult(result: ApiResult | undefined, fallback: string, okMessage?: string) {
+  if (result?.ok) {
+    if (okMessage)
+      toast.success(okMessage)
+    return true
   }
-  if (!password.value) {
-    error.value = '请输入密码'
-    return false
-  }
-  return true
+  toast.error(result?.error || fallback)
+  return false
 }
 
-async function handleSubmit() {
-  if (!validateForm())
+function handleAuthError(data: any, fallback: string) {
+  if (data?.errorType === 'rate_limit') {
+    errorMessage.value = data.error || fallback
+    if (data.remainingMs)
+      rateLimitRemaining.value = Math.ceil(data.remainingMs / 1000)
+    return
+  }
+  if (data?.errorType === 'locked') {
+    errorMessage.value = data.error || '账户已被锁定'
+    if (data.remainingMs)
+      lockoutRemaining.value = Math.ceil(data.remainingMs / 1000 / 60)
+    return
+  }
+  errorMessage.value = data?.error || fallback
+}
+
+async function handleLogin() {
+  if (!canSubmit.value)
     return
 
   loading.value = true
-  error.value = ''
-  success.value = ''
+  errorMessage.value = ''
 
   try {
     const result = await userStore.login(username.value, password.value)
     if (result.ok) {
-      if (result.data?.mustChangePassword)
-        success.value = '登录成功，请修改默认密码'
+      toast.success('登录成功')
+      await userStore.fetchUserInfo()
       setTimeout(() => {
         window.location.href = '/'
       }, 500)
+      return
     }
-    else if (result.errorType === 'rate_limit') {
-      error.value = result.error || '请求过于频繁，请稍后重试'
-      if (result.remainingMs)
-        rateLimitRemaining.value = Math.ceil(result.remainingMs / 1000)
-    }
-    else if (result.errorType === 'locked') {
-      error.value = result.error || '账户已被锁定'
-      if (result.remainingMs)
-        lockoutRemaining.value = Math.ceil(result.remainingMs / 1000 / 60)
-    }
-    else {
-      error.value = result.error || '登录失败'
-    }
+    handleAuthError(result, '登录失败')
   }
   catch (e: any) {
-    const data = e.response?.data
-    if (data?.errorType === 'rate_limit') {
-      error.value = getApiErrorMessage(data, '请求过于频繁')
-      if (data.remainingMs)
-        rateLimitRemaining.value = Math.ceil(data.remainingMs / 1000)
-    }
-    else if (data?.errorType === 'locked') {
-      error.value = getApiErrorMessage(data, '账户已被锁定')
-      if (data.remainingMs)
-        lockoutRemaining.value = Math.ceil(data.remainingMs / 1000 / 60)
-    }
-    else {
-      error.value = getApiErrorMessage(e, '操作异常')
-    }
+    handleAuthError(e.response?.data, '操作异常')
   }
   finally {
     loading.value = false
   }
 }
 
+let cardPreviewTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleCardPreview() {
+  cardPreview.value = null
+  if (cardPreviewTimer)
+    clearTimeout(cardPreviewTimer)
+  const code = registerForm.value.cardCode.trim()
+  if (code.length < 4)
+    return
+  cardPreviewTimer = setTimeout(async () => {
+    checkingCard.value = true
+    try {
+      cardPreview.value = await userStore.peekCard(code)
+    }
+    finally {
+      checkingCard.value = false
+    }
+  }, 400)
+}
+
+let invitePreviewTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleInvitePreview() {
+  invitePreview.value = null
+  if (invitePreviewTimer)
+    clearTimeout(invitePreviewTimer)
+  const code = registerForm.value.inviteCode.trim()
+  if (code.length < 4)
+    return
+  invitePreviewTimer = setTimeout(async () => {
+    checkingInvite.value = true
+    try {
+      const res = await api.get('/api/public/invite/preview', { params: { code }, skipErrorToast: true })
+      invitePreview.value = res.data?.data || null
+    }
+    catch {
+      invitePreview.value = { valid: false, reason: 'network' }
+    }
+    finally {
+      checkingInvite.value = false
+    }
+  }, 400)
+}
+
+async function handleClaimFreeCard() {
+  if (claimingCard.value)
+    return
+  claimingCard.value = true
+  try {
+    const result = await userStore.claimFreeCard()
+    if (!result?.ok) {
+      toast.error(result?.error || '领取失败，请稍后重试')
+      return
+    }
+    registerForm.value.cardCode = result.cardCode || ''
+    scheduleCardPreview()
+    toast.success(`已领取免费卡密（${result.valueText || '加时卡'}），已自动填入，请直接注册`)
+  }
+  finally {
+    claimingCard.value = false
+  }
+}
+
+async function handleRegister() {
+  if (!canSubmit.value)
+    return
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const result = await userStore.register(
+      registerForm.value.username,
+      registerForm.value.password,
+      registerForm.value.cardCode.trim(),
+      registerForm.value.inviteCode.trim(),
+    )
+    if (!showResult(result, '注册失败'))
+      return
+    toast.success('注册成功，请使用账号密码登录')
+    username.value = registerForm.value.username
+    password.value = ''
+    registerForm.value = { username: '', password: '', confirm: '', cardCode: '', inviteCode: '' }
+    cardPreview.value = null
+    invitePreview.value = null
+    tab.value = 'login'
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function handleReset() {
+  if (!canSubmit.value)
+    return
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    if (resetStep.value === 1) {
+      const result = await userStore.verifyResetPassword(resetForm.value.username, resetForm.value.cardCode)
+      if (showResult(result, '验证失败')) {
+        toast.success('验证通过，请设置新密码')
+        resetStep.value = 2
+      }
+      return
+    }
+    const result = await userStore.resetPassword(
+      resetForm.value.username,
+      resetForm.value.cardCode,
+      resetForm.value.newPassword,
+    )
+    if (!showResult(result, '重置失败'))
+      return
+    toast.success('密码重置成功，请重新登录')
+    resetStep.value = 1
+    resetForm.value = { username: '', cardCode: '', newPassword: '' }
+    tab.value = 'login'
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+function submit() {
+  if (tab.value === 'login')
+    return handleLogin()
+  if (tab.value === 'register')
+    return handleRegister()
+  return handleReset()
+}
+
+function switchTab(next: TabKey) {
+  tab.value = next
+  resetStep.value = 1
+  errorMessage.value = ''
+}
+
+/** 登录页续费成功后，把账号回填到登录框，方便直接登录 */
+function handleRenewDone(renewedUsername: string) {
+  if (!renewedUsername)
+    return
+  username.value = renewedUsername
+  password.value = ''
+  tab.value = 'login'
+}
+
 async function fetchGameVersion() {
   try {
-    const res = await api.get('/api/game-version')
+    const res = await api.get('/api/game-version', { skipErrorToast: true })
     if (res.data.ok)
       gameVersion.value = res.data.clientVersion
     wxGameVersion.value = res.data.wxClientVersion || ''
@@ -127,65 +322,271 @@ onMounted(fetchGameVersion)
             QQ农场智能助手
           </h1>
           <p class="logo-subtitle">
-            超级管理员登录
+            {{ tab === 'register' ? '创建账号 · 卡密激活' : tab === 'reset' ? '找回密码' : '欢迎回来，开启智慧农耕之旅' }}
           </p>
         </div>
       </header>
 
-      <form class="form-area" @submit.prevent="handleSubmit">
-        <div class="form-group">
-          <label class="form-label" for="username">
-            <span class="i-carbon-user" />
-            用户名
-          </label>
-          <BaseInput
-            id="username"
-            v-model="username"
-            type="text"
-            placeholder="请输入用户名"
-            autocomplete="username"
-            required
-          />
-          <p v-if="username && !usernameValid.valid" class="form-hint error">
-            {{ usernameValid.message }}
-          </p>
-        </div>
+      <!-- Tab 切换 -->
+      <nav class="tab-bar" aria-label="登录页切换">
+        <button
+          v-for="item in tabs"
+          :key="item.key"
+          type="button"
+          class="tab-item"
+          :class="{ active: tab === item.key }"
+          @click="switchTab(item.key)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
 
-        <div class="form-group">
-          <label class="form-label" for="password">
-            <span class="i-carbon-locked" />
-            密码
-          </label>
-          <BaseInput
-            id="password"
-            v-model="password"
-            type="password"
-            placeholder="请输入密码"
-            autocomplete="current-password"
-            required
-          />
-        </div>
+      <form class="form-area" @submit.prevent="submit">
+        <!-- 登录 -->
+        <template v-if="tab === 'login'">
+          <div class="form-group">
+            <label class="form-label" for="username">
+              <span class="i-carbon-user" />
+              用户名
+            </label>
+            <BaseInput
+              id="username"
+              v-model="username"
+              type="text"
+              placeholder="请输入用户名"
+              autocomplete="username"
+              required
+            />
+          </div>
 
-        <div v-if="error" class="message error-message" role="alert">
+          <div class="form-group">
+            <label class="form-label" for="password">
+              <span class="i-carbon-locked" />
+              密码
+            </label>
+            <BaseInput
+              id="password"
+              v-model="password"
+              type="password"
+              placeholder="请输入密码"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+        </template>
+
+        <!-- 注册 -->
+        <template v-else-if="tab === 'register'">
+          <div class="form-group">
+            <label class="form-label" for="reg-username">
+              <span class="i-carbon-user" />
+              用户名
+            </label>
+            <BaseInput
+              id="reg-username"
+              v-model="registerForm.username"
+              type="text"
+              placeholder="3-32 位字母/数字/下划线"
+              autocomplete="username"
+              required
+            />
+            <p v-if="registerForm.username && !usernameValid.valid" class="form-hint error">
+              {{ usernameValid.message }}
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reg-password">
+              <span class="i-carbon-locked" />
+              密码
+            </label>
+            <BaseInput
+              id="reg-password"
+              v-model="registerForm.password"
+              type="password"
+              placeholder="至少 6 位"
+              autocomplete="new-password"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reg-confirm">
+              <span class="i-carbon-locked" />
+              确认密码
+            </label>
+            <BaseInput
+              id="reg-confirm"
+              v-model="registerForm.confirm"
+              type="password"
+              placeholder="再次输入密码"
+              autocomplete="new-password"
+              :style="passwordMismatch ? { borderColor: 'var(--ui-danger)' } : undefined"
+              required
+            />
+            <p v-if="passwordMismatch" class="form-hint error">
+              两次输入的密码不一致
+            </p>
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label class="form-label" for="reg-card">
+                <span class="i-carbon-ticket" />
+                卡密（决定账号有效期）
+              </label>
+              <button
+                type="button"
+                class="link-btn"
+                :disabled="claimingCard"
+                @click="handleClaimFreeCard"
+              >
+                <span :class="claimingCard ? 'i-carbon-circle-dash animate-spin' : 'i-carbon-gift'" />
+                {{ claimingCard ? '领取中…' : '领取免费卡密' }}
+              </button>
+            </div>
+            <BaseInput
+              id="reg-card"
+              v-model="registerForm.cardCode"
+              type="text"
+              placeholder="例如 XXXX-XXXX-XXXX-XXXX"
+              class="font-mono"
+              required
+              @input="scheduleCardPreview"
+            />
+            <div v-if="checkingCard" class="form-hint">
+              正在校验卡密…
+            </div>
+            <div v-else-if="cardPreview" class="form-hint" :class="cardPreview.ok ? 'ok' : 'error'">
+              <span :class="cardPreview.ok ? 'i-carbon-checkmark-filled' : 'i-carbon-warning-filled'" />
+              <span v-if="cardPreview.ok">
+                {{ cardPreview.data?.type === 'quota' ? `额度卡 · +${cardPreview.data?.value} 个账号` : `加时卡 · ${cardPreview.data?.isPermanent ? '永久' : `${cardPreview.data?.durationValue}${cardPreview.data?.durationUnit === 'hour' ? ' 小时' : ' 天'}`}` }}
+              </span>
+              <span v-else>{{ cardPreview.error }}</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label class="form-label" for="reg-invite">
+                <span class="i-carbon-user-follow" />
+                邀请码（可选）
+              </label>
+              <span class="label-extra">不填也能注册</span>
+            </div>
+            <BaseInput
+              id="reg-invite"
+              v-model="registerForm.inviteCode"
+              type="text"
+              placeholder="有朋友邀请你，就填他的邀请码"
+              class="font-mono"
+              @input="scheduleInvitePreview"
+            />
+            <div v-if="checkingInvite" class="form-hint">
+              正在校验邀请码…
+            </div>
+            <div v-else-if="invitePreview" class="form-hint" :class="invitePreview.valid ? 'ok' : 'error'">
+              <span :class="invitePreview.valid ? 'i-carbon-checkmark-filled' : 'i-carbon-warning-filled'" />
+              <span v-if="invitePreview.valid">
+                有效 · 绑定挂机账号后双方各得：你 {{ invitePreview.inviteeDays }} 天、邀请人 {{ invitePreview.inviterDays }} 天
+              </span>
+              <span v-else>{{ invitePreviewText }}</span>
+            </div>
+          </div>
+        </template>
+
+        <!-- 找回密码 -->
+        <template v-else>
+          <div class="form-group">
+            <label class="form-label" for="reset-username">
+              <span class="i-carbon-user" />
+              用户名
+            </label>
+            <BaseInput
+              id="reset-username"
+              v-model="resetForm.username"
+              type="text"
+              placeholder="请输入用户名"
+              autocomplete="username"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reset-card">
+              <span class="i-carbon-ticket" />
+              曾用卡密（用于验证身份）
+            </label>
+            <BaseInput
+              id="reset-card"
+              v-model="resetForm.cardCode"
+              type="text"
+              placeholder="例如 XXXX-XXXX-XXXX-XXXX"
+              class="font-mono"
+              required
+            />
+          </div>
+
+          <div v-if="resetStep === 2" class="form-group">
+            <label class="form-label" for="reset-password">
+              <span class="i-carbon-locked" />
+              新密码
+            </label>
+            <BaseInput
+              id="reset-password"
+              v-model="resetForm.newPassword"
+              type="password"
+              placeholder="至少 6 位"
+              autocomplete="new-password"
+              required
+            />
+          </div>
+        </template>
+
+        <div v-if="errorMessage" class="message error-message" role="alert">
           <span class="i-carbon-warning-alt" />
           <div>
-            {{ error }}
+            {{ errorMessage }}
             <span v-if="lockoutRemaining > 0">（{{ lockoutRemaining }} 分钟后解锁）</span>
             <span v-if="rateLimitRemaining > 0">（{{ rateLimitRemaining }} 秒后可重试）</span>
           </div>
         </div>
-        <div v-if="success" class="message success-message" role="status">
-          <span class="i-carbon-checkmark-filled" />
-          {{ success }}
-        </div>
 
         <BaseButton type="submit" variant="primary" block :loading="loading" class="submit-btn">
           <span v-if="!loading" class="inline-flex items-center gap-2">
-            <span class="i-carbon-login" />
-            登录
+            <span :class="tab === 'login' ? 'i-carbon-login' : 'i-carbon-checkmark'" />
+            {{ submitLabel }}
           </span>
         </BaseButton>
       </form>
+
+      <div class="quick-area">
+        <div class="quick-divider">
+          <span>快捷入口</span>
+        </div>
+        <div class="quick-grid">
+          <button type="button" class="quick-entry" @click="showRenew = true">
+            <span class="i-carbon-renew" />
+            <span>账号续费</span>
+          </button>
+          <a class="quick-entry" :href="GITHUB_URL" target="_blank" rel="noopener noreferrer" title="GitHub 开源地址">
+            <span class="i-carbon-logo-github" />
+            <span>GitHub</span>
+          </a>
+        </div>
+        <p v-if="tab === 'login'" class="switch-hint">
+          还没有账号？
+          <button type="button" class="link-btn" @click="switchTab('register')">
+            立即注册
+          </button>
+        </p>
+        <p v-else class="switch-hint">
+          已有账号？
+          <button type="button" class="link-btn" @click="switchTab('login')">
+            返回登录
+          </button>
+        </p>
+      </div>
 
       <footer class="card-footer">
         <div class="footer-info">
@@ -193,11 +594,15 @@ onMounted(fetchGameVersion)
           <span v-if="gameVersion">QQ {{ gameVersion }}</span>
           <span v-if="wxGameVersion">微信 {{ wxGameVersion }}</span>
         </div>
-        <a href="https://github.com/liyangpengs/qq-farm-bot" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="GitHub">
-          <span class="i-carbon-logo-github" />
-        </a>
       </footer>
     </section>
+
+    <LoginRenewModal
+      :show="showRenew"
+      :default-username="username"
+      @close="showRenew = false"
+      @done="handleRenewDone"
+    />
   </main>
 </template>
 
@@ -246,7 +651,7 @@ onMounted(fetchGameVersion)
   display: flex;
   align-items: center;
   gap: 14px;
-  padding-bottom: 24px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--ui-border);
 }
 
@@ -274,11 +679,50 @@ onMounted(fetchGameVersion)
   font-size: 12px;
 }
 
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.tab-item {
+  position: relative;
+  padding: 8px 12px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ui-muted);
+  font-size: 13px;
+  font-weight: var(--fw-600);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.tab-item:hover {
+  color: var(--ui-ink);
+}
+
+.tab-item.active {
+  color: var(--ui-primary);
+}
+
+.tab-item.active::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ui-primary);
+  content: '';
+}
+
 .form-area {
   display: flex;
   flex-direction: column;
-  gap: 17px;
-  padding-top: 24px;
+  gap: 15px;
+  padding-top: 18px;
 }
 
 .form-group {
@@ -286,6 +730,18 @@ onMounted(fetchGameVersion)
   min-width: 0;
   flex-direction: column;
   gap: 7px;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.label-extra {
+  color: var(--ui-subtle);
+  font-size: 11px;
 }
 
 .form-label {
@@ -299,6 +755,29 @@ onMounted(fetchGameVersion)
 
 .form-label > span {
   color: var(--ui-primary);
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ui-primary);
+  font-size: 12px;
+  font-weight: var(--fw-600);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.link-btn:hover {
+  opacity: 0.8;
+}
+
+.link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .login-card :deep(.base-input) {
@@ -315,9 +794,20 @@ onMounted(fetchGameVersion)
 }
 
 .form-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin: 0;
-  color: var(--ui-danger);
+  color: var(--ui-subtle);
   font-size: 11px;
+}
+
+.form-hint.error {
+  color: var(--ui-danger);
+}
+
+.form-hint.ok {
+  color: var(--ui-primary);
 }
 
 .message {
@@ -337,22 +827,78 @@ onMounted(fetchGameVersion)
   background: var(--ui-danger-soft);
 }
 
-.success-message {
-  border-color: rgba(67, 141, 99, 0.18);
-  color: var(--ui-primary);
-  background: var(--ui-primary-soft);
-}
-
 .submit-btn {
   margin-top: 2px;
+}
+
+.quick-area {
+  margin-top: 20px;
+}
+
+.quick-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-subtle);
+  font-size: 11px;
+}
+
+.quick-divider::before,
+.quick-divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--ui-border);
+  content: '';
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.quick-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ui-surface-strong) 55%, transparent);
+  color: var(--ui-muted);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-entry > span:first-child {
+  color: var(--ui-primary);
+  font-size: 18px;
+}
+
+.quick-entry:hover {
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent);
+  background: var(--ui-surface-strong);
+  color: var(--ui-primary);
+  transform: translateY(-1px);
+}
+
+.switch-hint {
+  margin: 14px 0 0;
+  color: var(--ui-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 22px;
-  padding-top: 17px;
+  margin-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid var(--ui-border);
   color: var(--ui-subtle);
   font-size: 10px;
@@ -362,21 +908,6 @@ onMounted(fetchGameVersion)
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-}
-
-.github-link {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--ui-muted);
-  text-decoration: none;
-}
-
-.github-link:hover {
-  color: var(--ui-primary);
-  background: var(--ui-primary-soft);
 }
 
 @media (max-width: 480px) {
