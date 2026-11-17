@@ -5,6 +5,7 @@ import AdminAnnouncementPanel from '@/components/admin/AdminAnnouncementPanel.vu
 import AdminCardPanel from '@/components/admin/AdminCardPanel.vue'
 import AdminInvitePanel from '@/components/admin/AdminInvitePanel.vue'
 import AdminMailPanel from '@/components/admin/AdminMailPanel.vue'
+import AdminGlobalSettings from '@/components/admin/AdminGlobalSettings.vue'
 import AdminMailerCard from '@/components/admin/AdminMailerCard.vue'
 import AdminUserPanel from '@/components/admin/AdminUserPanel.vue'
 import { useToastStore } from '@/stores/toast'
@@ -289,8 +290,11 @@ onMounted(() => {
 
     <AdminAnnouncementPanel v-else-if="tab === 'announcement'" />
 
-    <!-- 全局设置：全局邮件服务（用户「通知设置」勾选复用；邮件通知群发也用这套 SMTP） -->
-    <AdminMailerCard v-else-if="tab === 'global'" />
+    <!-- 全局设置：全局功能开关、运行环境、登录/抓包设置与全局邮件服务（用户「通知设置」勾选复用；邮件通知群发也用这套 SMTP） -->
+    <div v-else-if="tab === 'global'" class="space-y-4">
+      <AdminGlobalSettings />
+      <AdminMailerCard />
+    </div>
 
     <!-- 邮件通知：使用「全局设置」里配置的邮件服务批量发通知 -->
     <AdminMailPanel v-else-if="tab === 'mail'" />
