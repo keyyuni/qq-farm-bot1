@@ -80,6 +80,16 @@ function normalizeAccount(raw: any): Account {
     if (openId) account.openId = openId;
     const loginType = String(source.loginType || '').trim();
     if (loginType) account.loginType = loginType;
+    // 微信扫码登录附加字段：wxid + 可再生凭证（自动刷新 Code / 自动重登依赖）
+    const wxid = String(source.wxid || '').trim();
+    if (wxid) account.wxid = wxid;
+    const loginBuffer = String(source.loginBuffer || '').trim();
+    if (loginBuffer) account.loginBuffer = loginBuffer;
+    const refreshtoken = String(source.refreshtoken || '').trim();
+    if (refreshtoken) account.refreshtoken = refreshtoken;
+    const accesstoken = String(source.accesstoken || '').trim();
+    if (accesstoken) account.accesstoken = accesstoken;
+    if (source.wxDefaultsApplied !== undefined) account.wxDefaultsApplied = source.wxDefaultsApplied === true;
     return account;
 }
 
@@ -89,7 +99,7 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
     let touchedAccountId = '';
     const source: any = acc || {};
     const cleanAccount: any = {};
-    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'owner', 'gid', 'openId', 'loginType']) {
+    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'owner', 'gid', 'openId', 'loginType', 'wxid', 'loginBuffer', 'refreshtoken', 'accesstoken', 'wxDefaultsApplied']) {
         if (source[key] !== undefined) cleanAccount[key] = source[key];
     }
     acc = cleanAccount;
@@ -114,6 +124,11 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
             ...(acc.gid ? { gid: String(acc.gid) } : {}),
             ...(acc.openId ? { openId: String(acc.openId) } : {}),
             ...(acc.loginType ? { loginType: String(acc.loginType) } : {}),
+            ...(acc.wxid ? { wxid: String(acc.wxid) } : {}),
+            ...(acc.loginBuffer ? { loginBuffer: String(acc.loginBuffer) } : {}),
+            ...(acc.refreshtoken ? { refreshtoken: String(acc.refreshtoken) } : {}),
+            ...(acc.accesstoken ? { accesstoken: String(acc.accesstoken) } : {}),
+            ...(acc.wxDefaultsApplied !== undefined ? { wxDefaultsApplied: acc.wxDefaultsApplied === true } : {}),
             createdAt: Date.now(),
             updatedAt: Date.now(),
         });

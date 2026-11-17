@@ -20,6 +20,10 @@ interface DataProviderOptions {
     startWorker: (account: any) => boolean;
     stopWorker: (accountId: string) => void;
     restartWorker: (account: any) => void;
+    // 微信定时刷新重登（自 qq-farm-bot 移植）
+    scheduleAutoCodeRefresh?: (accountId: string) => void;
+    stopAutoCodeRefresh?: (accountId: string) => void;
+    refreshAccountCode?: (accountId: string, reason?: string) => Promise<boolean>;
 }
 
 function createDataProvider(options: DataProviderOptions) {
@@ -41,6 +45,9 @@ function createDataProvider(options: DataProviderOptions) {
         startWorker,
         stopWorker,
         restartWorker,
+        scheduleAutoCodeRefresh,
+        stopAutoCodeRefresh,
+        refreshAccountCode,
     } = options;
 
     function getStoredAccountsList(): any[] {
@@ -470,6 +477,18 @@ function createDataProvider(options: DataProviderOptions) {
                 workerError = (e && e.message) ? e.message : String(e || 'unknown');
             }
             return { accountId, runtime, worker, workerError };
+        },
+
+        // —— 微信定时刷新重登（自 qq-farm-bot 移植）：路由层透传 ——
+        scheduleAutoCodeRefresh: (accountId: string) => {
+            if (typeof scheduleAutoCodeRefresh === 'function') scheduleAutoCodeRefresh(String(accountId || ''));
+        },
+        stopAutoCodeRefresh: (accountId: string) => {
+            if (typeof stopAutoCodeRefresh === 'function') stopAutoCodeRefresh(String(accountId || ''));
+        },
+        refreshAccountCode: (accountId: string, reason?: string) => {
+            if (typeof refreshAccountCode !== 'function') return Promise.resolve(false);
+            return Promise.resolve(refreshAccountCode(String(accountId || ''), reason || 'manual'));
         },
     };
 }

@@ -6,6 +6,7 @@ export {};
 const crypto = require('node:crypto');
 const axios = require('axios').default;
 const pushoo = require('pushoo').default;
+const nodemailer = require('nodemailer');
 
 const DINGTALK_WEBHOOK_PREFIX = 'https://oapi.dingtalk.com/robot/send?access_token=';
 const MEOW_DEFAULT_BASE_URL = 'https://api.chuckfang.com';
@@ -163,9 +164,66 @@ async function sendPushooMessage(payload: any = {}): Promise<{ ok: boolean; code
     };
 }
 
+/**
+ * 通过 SMTP 发送邮件（用于下线提醒等推送）
+ * @param options.smtpHost 必填 SMTP 服务器地址
+ * @param options.smtpPort SMTP 端口（默认 465，465 使用 SSL）
+ * @param options.smtpUser 必填 邮箱账号（发件人）
+ * @param options.smtpPass 必填 SMTP 授权码
+ * @param options.senderName 发件人显示名称（可选）
+ * @param options.recipientEmail 必填 收件人邮箱
+ * @param options.subject 必填 邮件主题
+ * @param options.content 必填 邮件正文
+ * @returns { ok, code, msg, raw }
+ */
+async function sendSmtpEmail(options: any = {}): Promise<{ ok: boolean; code: string; msg: string; raw: any }> {
+    const smtpHost = String(options.smtpHost || '').trim();
+    const smtpPort = Number(options.smtpPort) || 465;
+    const smtpUser = String(options.smtpUser || '').trim();
+    const smtpPass = String(options.smtpPass || '').trim();
+    const senderName = String(options.senderName || '').trim();
+    const recipientEmail = String(options.recipientEmail || '').trim();
+    const subject = assertRequiredText('subject', options.subject);
+    const content = assertRequiredText('content', options.content);
+
+    if (!smtpHost) throw new Error('SMTP服务器地址不能为空');
+    if (!smtpUser) throw new Error('邮箱账号不能为空');
+    if (!smtpPass) throw new Error('授权码不能为空');
+    if (!recipientEmail) throw new Error('收件人邮箱不能为空');
+
+    const from = senderName
+        ? `"${senderName.replace(/"/g, '')}" <${smtpUser}>`
+        : smtpUser;
+
+    const transport = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465, // 465 端口使用 SSL
+        auth: {
+            user: smtpUser,
+            pass: smtpPass,
+        },
+    });
+
+    try {
+        const info: any = await transport.sendMail({
+            from,
+            to: recipientEmail,
+            subject,
+            text: content,
+        });
+        return { ok: true, code: 'ok', msg: '邮件发送成功', raw: info };
+    } catch (error: any) {
+        return { ok: false, code: 'error', msg: String(error?.message || error || '邮件发送失败'), raw: null };
+    } finally {
+        try { transport.close(); } catch { /* 忽略关闭失败 */ }
+    }
+}
+
 module.exports = {
     buildDingTalkWebhook,
     createDingTalkSign,
     sendMeowMessage,
     sendPushooMessage,
+    sendSmtpEmail,
 };

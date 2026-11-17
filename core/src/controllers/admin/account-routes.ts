@@ -148,7 +148,13 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             // 如果是新增，自动启动
             if (!isUpdate) {
                 const newAcc = data.accounts.at(-1);
-                if (newAcc) ctx.provider.startAccount(newAcc.id);
+                if (newAcc) {
+                    ctx.provider.startAccount(newAcc.id);
+                    // 微信账号：按当前配置（含默认迁移标记）重建定时刷新/保活调度
+                    if (typeof (ctx.provider as any).scheduleAutoCodeRefresh === 'function') {
+                        (ctx.provider as any).scheduleAutoCodeRefresh(String(newAcc.id));
+                    }
+                }
                 // 新号第一次绑定挂机账号 → 结算邀请人的待定奖励（失败不影响建号）
                 if (currentUser && currentUser.username) {
                     try {
@@ -185,6 +191,10 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const before = ctx.provider.getAccounts();
             const target = findAccountByRef(before.accounts || [], req.params.id);
             ctx.provider.stopAccount(resolvedId);
+            // 清掉该账号的定时刷新/保活/重登调度
+            if (typeof (ctx.provider as any).stopAutoCodeRefresh === 'function') {
+                (ctx.provider as any).stopAutoCodeRefresh(resolvedId);
+            }
             const data = deleteAccount(resolvedId);
             if (ctx.provider.addAccountLog) {
                 ctx.provider.addAccountLog('delete', `删除账号: ${(target && target.name) || req.params.id}`, resolvedId, target ? target.name : '');
@@ -401,6 +411,38 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             if (!channel) {
                 return res.status(400).json({ ok: false, error: '推送渠道不能为空' });
             }
+
+            // SMTP 邮件渠道：校验并直接发测试邮件
+            if (channel === 'smtp') {
+                if (!String(cfg.smtpHost || '').trim()) {
+                    return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写服务器地址' });
+                }
+                if (!String(cfg.smtpUser || '').trim()) {
+                    return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写邮箱账号' });
+                }
+                if (!String(cfg.smtpPass || '').trim()) {
+                    return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写授权码' });
+                }
+                if (!String(cfg.recipientEmail || '').trim()) {
+                    return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写收件人邮箱' });
+                }
+                const { sendSmtpEmail } = require('../../services/push');
+                const ret = await sendSmtpEmail({
+                    smtpHost: cfg.smtpHost,
+                    smtpPort: cfg.smtpPort,
+                    smtpUser: cfg.smtpUser,
+                    smtpPass: cfg.smtpPass,
+                    senderName: cfg.senderName,
+                    recipientEmail: cfg.recipientEmail,
+                    subject: `${titleBase}（测试）`,
+                    content: `${msgBase}\n\n这是一条下线提醒测试邮件。\n时间: ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`,
+                });
+                if (!ret?.ok) {
+                    return res.status(400).json({ ok: false, error: ret?.msg || '测试邮件发送失败', data: ret });
+                }
+                return res.json({ ok: true, data: ret, message: ret.msg || '测试邮件发送成功' });
+            }
+
             if (channel === 'webhook' && !endpoint) {
                 return res.status(400).json({ ok: false, error: 'Webhook 渠道需要填写接口地址' });
             }
@@ -469,16 +511,63 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const autoAcceptHarvestStealEnabled = id && (typeof store.getAutoAcceptHarvestStealEnabled === 'function') ? store.getAutoAcceptHarvestStealEnabled(id) : true;
             const autoAcceptHarvestStealHarvest = id && (typeof store.getAutoAcceptHarvestStealHarvest === 'function') ? store.getAutoAcceptHarvestStealHarvest(id) : 8;
             const autoAcceptHarvestStealSteal = id && (typeof store.getAutoAcceptHarvestStealSteal === 'function') ? store.getAutoAcceptHarvestStealSteal(id) : 1;
+            const autoCodeRefresh = id && (typeof store.getAutoCodeRefresh === 'function') ? store.getAutoCodeRefresh(id) : { enabled: false, intervalMinutes: 60 };
             const ui = store.getUI();
             let offlineReminder = store.getOfflineReminder
                 ? store.getOfflineReminder()
                 : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
-            // 用户隔离：全局推送凭据（token/secret）仅超级管理员可见
+            // 用户隔离：全局推送凭据（token/secret/smtp）仅超级管理员可见
             const settingsUser = (req as AuthenticatedRequest).currentUser || null;
             if (!settingsUser || !isSuperAdminRole(settingsUser.role)) {
-                offlineReminder = { ...offlineReminder, endpoint: '', token: '', secret: '' };
+                offlineReminder = { ...offlineReminder, endpoint: '', token: '', secret: '', smtpHost: '', smtpUser: '', smtpPass: '', senderName: '', recipientEmail: '' };
             }
-            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, ui, offlineReminder } });
+            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, autoCodeRefresh, ui, offlineReminder } });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 保存微信定时刷新重登配置（按账号保存；启用后立即重建该账号的调度）
+    app.post('/api/settings/auto-code-refresh', (req: Request, res: Response) => {
+        const id = getAccId(ctx, req);
+        if (!id) {
+            return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        }
+        // 归属检查：普通用户只能改自己的账号
+        if (!canAccessAccount(ctx, req, id)) {
+            return res.status(403).json({ ok: false, error: '无权操作该账号' });
+        }
+        try {
+            const body = req.body || {};
+            const saved = store.setAutoCodeRefresh(id, {
+                enabled: body.enabled === true,
+                intervalMinutes: Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 60)),
+            });
+            // 调度幂等：按新配置重建该账号的刷新/保活任务
+            if (typeof (ctx.provider as any).scheduleAutoCodeRefresh === 'function') {
+                (ctx.provider as any).scheduleAutoCodeRefresh(id);
+            }
+            res.json({ ok: true, data: saved });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 手动立即刷新微信 Code（仅带凭证的微信账号有效）
+    app.post('/api/settings/auto-code-refresh/refresh', async (req: Request, res: Response) => {
+        const id = getAccId(ctx, req);
+        if (!id) {
+            return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        }
+        if (!canAccessAccount(ctx, req, id)) {
+            return res.status(403).json({ ok: false, error: '无权操作该账号' });
+        }
+        try {
+            if (typeof (ctx.provider as any).refreshAccountCode !== 'function') {
+                return res.status(501).json({ ok: false, error: '当前运行模式不支持手动刷新' });
+            }
+            const ok = await (ctx.provider as any).refreshAccountCode(id, 'manual');
+            res.json({ ok, error: ok ? undefined : '刷新失败，请检查网络或重新扫码登录' });
         } catch (e: any) {
             handleApiError(res, e);
         }

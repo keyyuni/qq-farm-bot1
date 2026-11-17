@@ -451,6 +451,8 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
             '/public/account-status',
             '/public/reset-password/',
             '/public/invite/',
+            // 抓包根 CA 证书下载：手机直接访问（flowId + token 自鉴权，无需面板会话）
+            '/public/capture-certificate/',
         ];
         if (publicExact.has(path)) return next();
         if (publicPrefixes.some(prefix => path.startsWith(prefix))) return next();

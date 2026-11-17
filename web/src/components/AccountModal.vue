@@ -40,6 +40,8 @@ let wxPollController: AbortController | undefined
 let wxPollInFlight: Promise<void> | undefined
 let wxPollKey = ''
 let wxPendingCode = ''
+// 微信扫码登录的可再生凭证（loginBuffer/refreshtoken），随账号保存后支持定时刷新 Code 与自动重登
+let wxPendingCredentials: { wxid?: string, loginBuffer?: string, refreshtoken?: string, accesstoken?: string } | null = null
 const qqTaskId = ref('')
 const qqStatus = ref('')
 const qqError = ref('')
@@ -397,6 +399,13 @@ async function submitPendingQrAccount(platform: 'wx' | 'qq') {
   }
 
   const payload: any = { name, code, platform, loginType: 'manual' }
+  if (platform === 'wx' && wxPendingCredentials) {
+    payload.wxid = wxPendingCredentials.wxid
+    payload.loginBuffer = wxPendingCredentials.loginBuffer
+    payload.refreshtoken = wxPendingCredentials.refreshtoken
+    payload.accesstoken = wxPendingCredentials.accesstoken
+    wxPendingCredentials = null
+  }
   const saved = await addAccount(payload, !!props.editData)
   if (!saved && props.show && activeLoginTab.value === `${platform}_qr`) {
     if (platform === 'wx')
@@ -501,6 +510,7 @@ function resetWxLogin() {
   wxQrUrl.value = ''
   wxLoading.value = false
   wxPendingCode = ''
+  wxPendingCredentials = null
   clearQrNameSubmitTimer()
 }
 
@@ -519,6 +529,12 @@ async function getWxCodeAndAdd(taskId: string, flowVersion: number) {
   if (!code)
     throw new Error('未获取到登录 Code')
 
+  wxPendingCredentials = {
+    wxid: String(codeResult.data?.data?.openid || '').trim() || undefined,
+    loginBuffer: String(codeResult.data?.data?.loginBuffer || '').trim() || undefined,
+    refreshtoken: String(codeResult.data?.data?.refreshtoken || '').trim() || undefined,
+    accesstoken: String(codeResult.data?.data?.accesstoken || '').trim() || undefined,
+  }
   await addQrAccount('wx', code, nickname)
 }
 

@@ -31,6 +31,12 @@ interface WorkerManagerOptions {
     sendConfiguredPush?: (payload: any) => Promise<void> | void;
     addOrUpdateAccount: (acc: any) => any;
     deleteAccount: (id: string) => void;
+    /** 微信定时刷新（auto-code-refresh）：Code 失效时即时恢复 */
+    refreshAccountCode?: (accountId: string, reason?: string) => Promise<boolean>;
+    /** 微信定时刷新（auto-code-refresh）：被踢/断线后按阶梯延迟自动重登 */
+    scheduleAutoRelogin?: (accountId: string, reason?: string) => boolean;
+    /** 外部顶号记录：短时间多次被顶后停止自动重登 */
+    shouldStopAutoRelogin?: (accountId: string, reason: unknown) => boolean;
     onStatusSync?: (accountId: string, status: any, accountName?: string) => void;
     onWorkerLog?: (entry: any, accountId: string, accountName?: string) => void;
 }
@@ -54,10 +60,15 @@ function createWorkerManager(options: WorkerManagerOptions) {
         sendConfiguredPush,
         addOrUpdateAccount,
         deleteAccount,
+        refreshAccountCode,
+        scheduleAutoRelogin,
+        shouldStopAutoRelogin,
         onStatusSync,
         onWorkerLog,
     } = options;
     const managerScheduler = createScheduler('worker_manager');
+    /** 进行中的凭证即时恢复（ws_400）去重 */
+    const credentialRefreshes = new Map<string, Promise<void>>();
     const useThreadRuntime = runtimeMode === 'thread' && !(processRef as any).pkg && typeof WorkerThread === 'function';
 
     function createThreadWorker(account: any): any {
@@ -362,6 +373,17 @@ function createWorkerManager(options: WorkerManagerOptions) {
                     accountId,
                     worker.name,
                 );
+                // 微信定时刷新：Code 失效时先即时恢复一次，失败再走阶梯重登
+                if (typeof refreshAccountCode === 'function' && !credentialRefreshes.has(accountId)) {
+                    const task = Promise.resolve(refreshAccountCode(accountId, 'ws_400'))
+                        .then(ok => {
+                            if (!ok && typeof scheduleAutoRelogin === 'function') {
+                                scheduleAutoRelogin(accountId, 'ws_400_refresh_failed');
+                            }
+                        })
+                        .finally(() => credentialRefreshes.delete(accountId));
+                    credentialRefreshes.set(accountId, task);
+                }
             }
         } else if (msg.type === 'account_kicked') {
             if (worker.terminalHandled) return;
@@ -377,7 +399,16 @@ function createWorkerManager(options: WorkerManagerOptions) {
                 offlineMs: 0,
             });
             addAccountLog('kickout_stop', `账号 ${worker.name} 被踢下线，已自动停止`, accountId, worker.name, { reason, reasonCode, diagnostics });
+            const stopRelogin = typeof shouldStopAutoRelogin === 'function' && shouldStopAutoRelogin(accountId, reason);
             stopWorker(accountId);
+            if (stopRelogin) {
+                // 多次被其他终端顶号：停止自动重登，避免互相顶号
+                addAccountLog('kickout_auto_relogin_disabled',
+                    '多次被其他终端顶号，已停止自动重登（请检查别处是否还登着这个号）',
+                    accountId, worker.name, { reason });
+            } else if (typeof scheduleAutoRelogin === 'function') {
+                scheduleAutoRelogin(accountId, `kickout:${reason}`);
+            }
         } else if (msg.type === 'account_disconnected') {
             if (worker.terminalHandled) return;
             worker.terminalHandled = true;
@@ -416,6 +447,10 @@ function createWorkerManager(options: WorkerManagerOptions) {
                 { source, disconnectCode: code, reason, phase, connectionId: Number(msg.connectionId) || 0, diagnostics: msg.diagnostics || null },
             );
             stopWorker(accountId);
+            // 微信定时刷新：连接断开后按阶梯延迟自动重登（QQ 号无凭证会静默跳过）
+            if (typeof scheduleAutoRelogin === 'function') {
+                scheduleAutoRelogin(accountId, `ws_reconnect_failed:${reason}`);
+            }
         } else if (msg.type === 'api_response') {
             const { id, result, error } = msg;
             managerScheduler.clear(`api_timeout_${accountId}_${id}`);

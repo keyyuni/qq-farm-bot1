@@ -93,6 +93,8 @@ export interface UIConfig {
 export interface SettingsState {
   plantingStrategy: string
   preferredSeedId: number
+  /** 微信定时刷新重登（按账号保存） */
+  autoCodeRefresh: { enabled: boolean, intervalMinutes: number }
   bagSeedPriority: number[]
   bagSeedMultiLandReservationEnabled: boolean
   bagSeedLandTypes: Record<string, string[]>
@@ -175,6 +177,7 @@ function createDefaultSettings(): SettingsState {
   return {
     plantingStrategy: 'max_exp',
     preferredSeedId: 0,
+    autoCodeRefresh: { enabled: false, intervalMinutes: 60 },
     bagSeedPriority: [],
     bagSeedMultiLandReservationEnabled: false,
     bagSeedLandTypes: {},
@@ -238,6 +241,10 @@ export const useSettingStore = defineStore('setting', () => {
     settings.value = {
       plantingStrategy: data.strategy || defaults.plantingStrategy,
       preferredSeedId: data.preferredSeed || defaults.preferredSeedId,
+      autoCodeRefresh: {
+        enabled: data.autoCodeRefresh?.enabled === true,
+        intervalMinutes: Number(data.autoCodeRefresh?.intervalMinutes) || 60,
+      },
       bagSeedPriority: cloneValue(data.bagSeedPriority ?? defaults.bagSeedPriority),
       bagSeedMultiLandReservationEnabled: data.bagSeedMultiLandReservationEnabled ?? defaults.bagSeedMultiLandReservationEnabled,
       bagSeedLandTypes: cloneValue(data.bagSeedLandTypes ?? defaults.bagSeedLandTypes),

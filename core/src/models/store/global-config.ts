@@ -31,7 +31,8 @@ function normalizeOfflineReminder(input: unknown): OfflineReminder {
         || (PUSHOO_CHANNELS.has(String(endpoint || '').trim().toLowerCase())
             ? String(endpoint || '').trim().toLowerCase()
             : DEFAULT_OFFLINE_REMINDER.channel);
-    const channel = PUSHOO_CHANNELS.has(migratedChannel)
+    // smtp 不属于 pushoo 渠道集合，单独放行
+    const channel = (migratedChannel === 'smtp' || PUSHOO_CHANNELS.has(migratedChannel))
         ? migratedChannel
         : DEFAULT_OFFLINE_REMINDER.channel;
     const token = (src.token !== undefined && src.token !== null)
@@ -46,6 +47,28 @@ function normalizeOfflineReminder(input: unknown): OfflineReminder {
     const msg = (src.msg !== undefined && src.msg !== null)
         ? String(src.msg).trim()
         : DEFAULT_OFFLINE_REMINDER.msg;
+    const smtpHost = (src.smtpHost !== undefined && src.smtpHost !== null)
+        ? String(src.smtpHost).trim()
+        : DEFAULT_OFFLINE_REMINDER.smtpHost;
+    let smtpPort = Number.parseInt(src.smtpPort, 10);
+    if (!Number.isFinite(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+        smtpPort = DEFAULT_OFFLINE_REMINDER.smtpPort;
+    }
+    const smtpUser = (src.smtpUser !== undefined && src.smtpUser !== null)
+        ? String(src.smtpUser).trim()
+        : DEFAULT_OFFLINE_REMINDER.smtpUser;
+    const smtpPass = (src.smtpPass !== undefined && src.smtpPass !== null)
+        ? String(src.smtpPass).trim()
+        : DEFAULT_OFFLINE_REMINDER.smtpPass;
+    const senderName = (src.senderName !== undefined && src.senderName !== null)
+        ? String(src.senderName).trim()
+        : DEFAULT_OFFLINE_REMINDER.senderName;
+    const recipientEmail = (src.recipientEmail !== undefined && src.recipientEmail !== null)
+        ? String(src.recipientEmail).trim()
+        : DEFAULT_OFFLINE_REMINDER.recipientEmail;
+    const emailContent = (src.emailContent !== undefined && src.emailContent !== null)
+        ? String(src.emailContent).trim()
+        : DEFAULT_OFFLINE_REMINDER.emailContent;
     return {
         channel,
         endpoint,
@@ -54,6 +77,13 @@ function normalizeOfflineReminder(input: unknown): OfflineReminder {
         title,
         msg,
         offlineDeleteSec,
+        smtpHost,
+        smtpPort,
+        smtpUser,
+        smtpPass,
+        senderName,
+        recipientEmail,
+        emailContent,
     };
 }
 

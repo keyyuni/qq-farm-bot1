@@ -89,6 +89,24 @@ function getAutomation(accountId?: unknown): AutomationConfig {
     return automation;
 }
 
+function getAutoCodeRefresh(accountId?: unknown): { enabled: boolean; intervalMinutes: number } {
+    const cfg = getAccountConfigSnapshot(accountId).autoCodeRefresh;
+    return {
+        enabled: cfg.enabled === true,
+        intervalMinutes: Math.max(1, Math.min(1440, Number(cfg.intervalMinutes) || 60)),
+    };
+}
+
+function setAutoCodeRefresh(accountId: unknown, config: unknown, persist: boolean = true): { enabled: boolean; intervalMinutes: number } {
+    const data: any = (config && typeof config === 'object') ? config : {};
+    return setAccountConfigSnapshot(accountId, {
+        autoCodeRefresh: {
+            enabled: data.enabled === true,
+            intervalMinutes: Math.max(1, Math.min(1440, Number(data.intervalMinutes) || 60)),
+        },
+    }, persist).autoCodeRefresh;
+}
+
 function getConfigSnapshot(accountId?: unknown): AccountConfig & { ui: typeof globalConfig.ui } {
     const cfg = getAccountConfigSnapshot(accountId);
     return {
@@ -496,6 +514,8 @@ module.exports = {
     applyConfigSnapshot,
     getAutomation,
     setAutomation,
+    getAutoCodeRefresh,
+    setAutoCodeRefresh,
     isAutomationOn,
     getPreferredSeed,
     getPlantingStrategy,

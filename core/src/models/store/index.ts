@@ -11,6 +11,8 @@ module.exports = {
     applyConfigSnapshot: accountConfig.applyConfigSnapshot,
     getAutomation: accountConfig.getAutomation,
     setAutomation: accountConfig.setAutomation,
+    getAutoCodeRefresh: accountConfig.getAutoCodeRefresh,
+    setAutoCodeRefresh: accountConfig.setAutoCodeRefresh,
     isAutomationOn: accountConfig.isAutomationOn,
     getPreferredSeed: accountConfig.getPreferredSeed,
     getPlantingStrategy: accountConfig.getPlantingStrategy,

@@ -16,6 +16,16 @@ export interface Account {
   openId?: string;
   /** 登录方式：qr / capture / manual 等 */
   loginType?: string;
+  /** 微信扫码登录附加：openid（应用宝侧用户标识，自动刷新 Code 依赖） */
+  wxid?: string;
+  /** 微信扫码登录附加：应用宝登录缓冲凭证（可换发 Code） */
+  loginBuffer?: string;
+  /** 微信扫码登录附加：滚动刷新令牌（保活/续期 loginBuffer） */
+  refreshtoken?: string;
+  /** 微信扫码登录附加：访问令牌（配合 refreshtoken 使用） */
+  accesstoken?: string;
+  /** 是否已执行过"微信账号默认开启自动刷新"的一次性迁移 */
+  wxDefaultsApplied?: boolean;
   createdAt: number;
   updatedAt: number;
 }

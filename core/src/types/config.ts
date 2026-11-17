@@ -47,6 +47,11 @@ export interface AutomationConfig extends RanchAutomationConfig {
   show_manual_fertilizer: boolean;
 }
 
+export interface AutoCodeRefreshConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+}
+
 export interface IntervalConfig {
   farm: number;
   farmMin: number;
@@ -71,6 +76,8 @@ export interface AccountConfig {
   automation: AutomationConfig;
   plantingStrategy: PlantingStrategy;
   preferredSeedId: number;
+  /** 微信定时刷新重登（按账号保存）：定时换新 Code + 被踢/断线自动重登 */
+  autoCodeRefresh: AutoCodeRefreshConfig;
   intervals: IntervalConfig;
   friendQuietHours: QuietHoursConfig;
   knownFriendGids: number[];
@@ -109,6 +116,13 @@ export interface OfflineReminder {
   title: string;
   msg: string;
   offlineDeleteSec: number;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  senderName: string;
+  recipientEmail: string;
+  emailContent: string;
 }
 
 export interface UIConfig {

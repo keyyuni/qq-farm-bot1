@@ -4,9 +4,11 @@ const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const store = require('../models/store');
 const { updateRuntimeConfig, getRuntimeConfig, getDefaultSystemConfig } = require('../config/config');
-const { sendPushooMessage } = require('../services/push');
+const { sendPushooMessage, sendSmtpEmail } = require('../services/push');
 const { createDataProvider } = require('./data-provider');
 const { createReloginReminderService } = require('./relogin-reminder');
+const { createAutoCodeRefreshService } = require('./auto-code-refresh');
+const kickGuard = require('../services/kick-guard');
 const { createRuntimeState } = require('./runtime-state');
 const { createWorkerManager } = require('./worker-manager');
 
@@ -57,6 +59,7 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
     const reloginReminder = createReloginReminderService({
         store,
         sendPushooMessage,
+        sendSmtpEmail,
         log,
     });
 
@@ -65,6 +68,13 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         triggerOfflineReminder,
         sendConfiguredPush,
     } = reloginReminder;
+
+    // 微信定时刷新服务：worker-manager 里先注入转发桩，服务实例创建后再回填
+    // （避免 workerManager 与 autoCodeRefresh 的循环依赖：刷新成功需要 restartWorker）
+    const autoReloginHooks: {
+        scheduleAutoRelogin?: (accountId: string, reason?: string) => boolean;
+        refreshAccountCode?: (accountId: string, reason?: string) => Promise<boolean>;
+    } = {};
 
     const { startWorker, stopWorker, restartWorker, callWorkerApi } = createWorkerManager({
         fork,
@@ -84,6 +94,9 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         sendConfiguredPush,
         addOrUpdateAccount: store.addOrUpdateAccount,
         deleteAccount: store.deleteAccount,
+        scheduleAutoRelogin: (accountId: string, reason?: string) => autoReloginHooks.scheduleAutoRelogin?.(accountId, reason) || false,
+        refreshAccountCode: (accountId: string, reason?: string) => autoReloginHooks.refreshAccountCode?.(accountId, reason) || Promise.resolve(false),
+        shouldStopAutoRelogin: (accountId: string, reason: unknown) => kickGuard.shouldStopAutoRelogin(accountId, reason),
         onStatusSync: (accountId: string, status: any, accountName?: string) => {
             runtimeEvents.emit('status', { accountId, status, accountName });
             if (onStatusSync) onStatusSync(accountId, status, accountName);
@@ -93,6 +106,17 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
             if (onLog) onLog(entry, accountId, accountName);
         },
     });
+
+    const autoCodeRefresh = createAutoCodeRefreshService({
+        store,
+        getAccounts: store.getAccounts,
+        addOrUpdateAccount: store.addOrUpdateAccount,
+        resolveWorkerControls: () => ({ restartWorker }),
+        log,
+        addAccountLog,
+    });
+    autoReloginHooks.scheduleAutoRelogin = autoCodeRefresh.scheduleRelogin;
+    autoReloginHooks.refreshAccountCode = autoCodeRefresh.refreshAccountCode;
     const dataProvider = createDataProvider({
         workers,
         globalLogs: GLOBAL_LOGS,
@@ -111,6 +135,9 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         startWorker,
         stopWorker,
         restartWorker,
+        scheduleAutoCodeRefresh: autoCodeRefresh.scheduleAccount,
+        stopAutoCodeRefresh: autoCodeRefresh.stopAccount,
+        refreshAccountCode: autoCodeRefresh.refreshAccountCode,
     });
 
     runtimeEvents.on('log', (entry: any) => {
@@ -143,11 +170,32 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         }
     }
 
-    function startAllAccounts(): void {
+    async function startAllAccounts(): Promise<void> {
         const accounts = (store.getAccounts().accounts || []);
         if (accounts.length > 0) {
             log('系统', `发现 ${accounts.length} 个账号，正在启动...`);
-            accounts.forEach((acc: any) => startWorker(acc));
+            for (const acc of accounts) {
+                // 为移植前已扫码保存凭证的微信账号执行一次默认策略迁移：默认开启自动刷新 Code
+                if (acc.platform === 'wx' && acc.loginBuffer && acc.wxDefaultsApplied !== true) {
+                    const currentRefresh = store.getAutoCodeRefresh(acc.id);
+                    store.setAutoCodeRefresh(acc.id, {
+                        enabled: true,
+                        intervalMinutes: currentRefresh.intervalMinutes || 60,
+                    });
+                    store.addOrUpdateAccount({ id: acc.id, wxDefaultsApplied: true });
+                    acc.wxDefaultsApplied = true;
+                    log('系统', `已为微信扫码账号 ${acc.name} 默认开启自动刷新 Code`, {
+                        accountId: String(acc.id), accountName: acc.name,
+                    });
+                }
+                if (acc.platform === 'wx' && acc.loginBuffer) {
+                    // 微信扫码号：启动时先换新 Code（旧 Code 大概率已过期），失败再按旧 Code 启动兜底
+                    const refreshed = await autoCodeRefresh.refreshAccountCode(acc.id, 'startup');
+                    if (!refreshed) startWorker(acc);
+                } else {
+                    startWorker(acc);
+                }
+            }
         } else {
             log('系统', '未发现账号，请访问管理面板添加账号');
         }
@@ -168,8 +216,10 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         }
 
         if (shouldAutoStartAccounts) {
-            startAllAccounts();
+            await startAllAccounts();
         }
+        // 按最新账号列表重建定时刷新/保活调度（幂等，QQ 号静默跳过）
+        autoCodeRefresh.rescheduleAll();
     }
 
     function stopAllAccounts(): void {

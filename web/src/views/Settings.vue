@@ -7,6 +7,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { getApiErrorMessage } from '@/api'
 import AccountModal from '@/components/AccountModal.vue'
+import InviteCard from '@/components/account/InviteCard.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import PageTabs from '@/components/PageTabs.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
@@ -18,7 +19,8 @@ import BaseSwitch from '@/components/ui/BaseSwitch.vue'
 import { getPlatformClass, getPlatformLabel, useAccountStore } from '@/stores/account'
 import { useSettingStore } from '@/stores/setting'
 import { useStatusStore } from '@/stores/status'
-import { useUserStore } from '@/stores/user'
+import { formatExpiresAt, formatRemaining, useUserStore } from '@/stores/user'
+import type { Redemption } from '@/stores/user'
 import AdminPanel from '@/views/AdminPanel.vue'
 
 const fertilizerLandTypeOptions = [
@@ -152,6 +154,129 @@ function handleAccountAvatarError(account: any) {
 const stoppedAccounts = computed(() => accounts.value.filter((acc: any) => !acc.running))
 const stoppedAccountsCount = computed(() => stoppedAccounts.value.length)
 
+// —— 我的账户（自源项目「我的账户」页移植到设置页账号页签）——
+const cardCode = ref('')
+const cardSubmitting = ref(false)
+const myRedemptions = ref<Redemption[]>([])
+const redemptionsLoading = ref(false)
+
+// —— 微信定时刷新重登（自源项目 AutoCodeRefreshCard 移植）——
+const localAutoCodeRefresh = ref({ enabled: false, intervalMinutes: 60 })
+const autoCodeSaving = ref(false)
+const autoCodeRefreshing = ref(false)
+const currentAccount = computed(() => (accounts.value as any[]).find(acc => String(acc.id) === String(currentAccountId.value)) || null)
+const currentAccountIsWx = computed(() => String(currentAccount.value?.platform || '') === 'wx')
+const currentAccountHasCredential = computed(() => !!String(currentAccount.value?.loginBuffer || '').trim())
+
+async function handleSaveAutoCodeRefresh() {
+  if (!currentAccountId.value) {
+    showAlert('请先选择账号', 'danger')
+    return
+  }
+  const interval = Math.max(1, Math.min(1440, Number(localAutoCodeRefresh.value.intervalMinutes) || 60))
+  localAutoCodeRefresh.value.intervalMinutes = interval
+  autoCodeSaving.value = true
+  try {
+    const { data } = await api.post('/api/settings/auto-code-refresh', {
+      enabled: localAutoCodeRefresh.value.enabled,
+      intervalMinutes: interval,
+    }, { headers: { 'x-account-id': currentAccountId.value } })
+    if (data?.ok) {
+      settings.value.autoCodeRefresh = { ...localAutoCodeRefresh.value }
+      showAlert('微信定时刷新设置已保存', 'primary')
+    }
+    else {
+      showAlert(getApiErrorMessage({ response: { data } }, '保存失败'), 'danger')
+    }
+  }
+  catch (error) {
+    showAlert(getApiErrorMessage(error, '保存失败'), 'danger')
+  }
+  finally {
+    autoCodeSaving.value = false
+  }
+}
+
+async function handleRefreshCodeNow() {
+  if (!currentAccountId.value)
+    return
+  autoCodeRefreshing.value = true
+  try {
+    const { data } = await api.post('/api/settings/auto-code-refresh/refresh', {}, {
+      headers: { 'x-account-id': currentAccountId.value },
+      timeout: 120000,
+    })
+    if (data?.ok)
+      showAlert('刷新 Code 成功，账号已重启', 'primary')
+    else
+      showAlert(getApiErrorMessage({ response: { data } }, '刷新失败，请检查网络或重新扫码登录'), 'danger')
+  }
+  catch (error) {
+    showAlert(getApiErrorMessage(error, '刷新失败，请检查网络或重新扫码登录'), 'danger')
+  }
+  finally {
+    autoCodeRefreshing.value = false
+  }
+}
+
+const myUsername = computed(() => String(userStore.username || '').trim())
+const myAccounts = computed(() => {
+  if (!myUsername.value)
+    return [] as any[]
+  return (accounts.value as any[]).filter(acc => String(acc?.owner || acc?.username || '').trim() === myUsername.value)
+})
+const myUnlimited = computed(() => userStore.accountLimit < 0)
+const myAccountUsed = computed(() => myAccounts.value.length)
+const myAccountRemaining = computed(() => myUnlimited.value ? -1 : Math.max(0, userStore.accountLimit - myAccountUsed.value))
+const myRemainingText = computed(() => formatRemaining(
+  userStore.subscription?.isPermanent
+    ? null
+    : userStore.subscription?.expiresAt ? userStore.subscription.expiresAt - Date.now() : 0,
+))
+
+async function loadMyRedemptions() {
+  redemptionsLoading.value = true
+  try {
+    const result = await userStore.fetchMyRedemptions(30)
+    myRedemptions.value = result.redemptions || []
+  }
+  catch {
+    myRedemptions.value = []
+  }
+  finally {
+    redemptionsLoading.value = false
+  }
+}
+
+async function handleRenewCard() {
+  const code = cardCode.value.trim()
+  if (!code) {
+    showAlert('请输入卡密', 'danger')
+    return
+  }
+  cardSubmitting.value = true
+  try {
+    const result = await userStore.renew(code)
+    if (!result.ok) {
+      showAlert(result.error || '核销失败', 'danger')
+      return
+    }
+    showAlert(`核销成功：${result.data?.summary || '已生效'}`, 'primary')
+    cardCode.value = ''
+    await userStore.fetchUserInfo()
+    await loadMyRedemptions()
+  }
+  finally {
+    cardSubmitting.value = false
+  }
+}
+
+function configMyAccount(acc: any) {
+  accountStore.selectAccount(String(acc.id))
+}
+
+onMounted(loadMyRedemptions)
+
 onMounted(async () => {
   await accountStore.fetchAccounts()
   if (!currentAccountId.value && accounts.value.length > 0 && accounts.value[0]) {
@@ -252,6 +377,14 @@ async function confirmClearStopped() {
 
 // ==================== 策略设置 ====================
 const { settings, loading: settingsLoading, loadedAccountId } = storeToRefs(settingStore)
+
+// —— 微信定时刷新重登：本地状态跟随当前账号的设置（须在 settings 声明之后注册）——
+watch(() => [settings.value.autoCodeRefresh, currentAccountId.value] as const, ([cfg]) => {
+  localAutoCodeRefresh.value = {
+    enabled: cfg?.enabled === true,
+    intervalMinutes: Number(cfg?.intervalMinutes) || 60,
+  }
+}, { immediate: true })
 
 interface SeedOptionItem {
   seedId: number
@@ -1103,9 +1236,17 @@ const localOffline = ref({
   title: '',
   msg: '',
   offlineDeleteSec: 0,
+  smtpHost: '',
+  smtpPort: 465,
+  smtpUser: '',
+  smtpPass: '',
+  senderName: '',
+  recipientEmail: '',
+  emailContent: '',
 })
 
 const channelOptions = [
+  { label: 'SMTP 邮件', value: 'smtp' },
   { label: 'Webhook(自定义接口)', value: 'webhook' },
   { label: 'Qmsg 酱', value: 'qmsg' },
   { label: 'Server 酱', value: 'serverchan' },
@@ -1154,6 +1295,7 @@ const CHANNEL_DOCS: Record<string, string> = {
 const offlineChannel = computed(() => String(localOffline.value.channel || '').trim().toLowerCase())
 const isDingTalkChannel = computed(() => offlineChannel.value === 'dingtalk')
 const isMeowChannel = computed(() => offlineChannel.value === 'meow')
+const isSmtpChannel = computed(() => offlineChannel.value === 'smtp')
 const offlineChannelUsesEndpoint = computed(() => offlineChannel.value === 'webhook' || isDingTalkChannel.value)
 const offlineEndpointLabel = computed(() => isDingTalkChannel.value ? 'Webhook 地址' : '接口地址')
 const offlineEndpointPlaceholder = computed(() => isDingTalkChannel.value
@@ -1183,6 +1325,13 @@ function syncLocalOfflineSettings() {
       title: '',
       msg: '',
       offlineDeleteSec: 0,
+      smtpHost: '',
+      smtpPort: 465,
+      smtpUser: '',
+      smtpPass: '',
+      senderName: '',
+      recipientEmail: '',
+      emailContent: '',
       ...saved,
     }
 
@@ -1222,6 +1371,21 @@ function validateDingTalkWebhook(): string {
   }
 
   return ''
+}
+
+function validateOfflineForm(): string {
+  if (isSmtpChannel.value) {
+    if (!String(localOffline.value.smtpHost || '').trim())
+      return '请填写 SMTP 服务器地址（如 smtp.qq.com）'
+    if (!String(localOffline.value.smtpUser || '').trim())
+      return '请填写发件邮箱账号'
+    if (!String(localOffline.value.smtpPass || '').trim())
+      return '请填写 SMTP 授权码'
+    if (!String(localOffline.value.recipientEmail || '').trim())
+      return '请填写收件人邮箱'
+    return ''
+  }
+  return validateDingTalkWebhook()
 }
 
 watch(settings, () => {
@@ -1264,7 +1428,7 @@ async function handleChangePassword() {
 }
 
 async function handleSaveOffline() {
-  const validationError = validateDingTalkWebhook()
+  const validationError = validateOfflineForm()
   if (validationError) {
     showAlert(validationError, 'danger')
     return
@@ -1287,7 +1451,7 @@ async function handleSaveOffline() {
 }
 
 async function handleTestOffline() {
-  const validationError = validateDingTalkWebhook()
+  const validationError = validateOfflineForm()
   if (validationError) {
     showAlert(validationError, 'danger')
     return
@@ -1774,6 +1938,216 @@ async function handleResetSystemConfig() {
             @cancel="!clearStoppedLoading && (showClearStoppedConfirm = false)"
             @confirm="confirmClearStopped"
           />
+
+          <!-- 微信定时刷新重登：仅微信账号显示（自源项目移植） -->
+          <div v-if="currentAccountIsWx" class="farm-card rounded-lg p-4">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h4 class="flex items-center gap-2 text-sm text-gray-900 font-semibold dark:text-gray-100">
+                  <span class="i-carbon-renew text-base" />
+                  微信定时刷新重登
+                  <span v-if="currentAccountName" class="text-xs text-gray-500 font-normal dark:text-gray-400">
+                    ({{ currentAccountName }})
+                  </span>
+                </h4>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  此处按账号保存，并非全局设置。
+                </p>
+              </div>
+              <BaseButton
+                size="sm"
+                :loading="autoCodeSaving"
+                :disabled="!currentAccountId || settingsLoading"
+                @click="handleSaveAutoCodeRefresh"
+              >
+                保存刷新设置
+              </BaseButton>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/20">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div class="min-w-0 space-y-2">
+                  <BaseSwitch v-model="localAutoCodeRefresh.enabled" label="启用定时刷新与自动重登" />
+                  <p class="max-w-3xl text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                    <template v-if="!currentAccountHasCredential">
+                      <span class="font-semibold text-amber-700 dark:text-amber-300">当前账号缺少登录凭据（需重新扫码添加）。</span>
+                    </template>
+                    <template v-else>
+                      <span class="font-semibold text-amber-700 dark:text-amber-300">仅带内置登录凭据的微信扫码账号可用。</span>
+                    </template>
+                    启用后会按间隔获取新 Code 并重启账号；账号被踢、断线或 Code 失效时，也会按阶梯延迟自动重登。
+                    关闭不会停用启动时刷新、Code 失效时的即时恢复和微信凭证保活。
+                  </p>
+                </div>
+
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <BaseInput
+                    v-model.number="localAutoCodeRefresh.intervalMinutes"
+                    label="间隔(分钟)"
+                    type="number"
+                    min="1"
+                    max="1440"
+                    placeholder="60"
+                    class="sm:w-36"
+                  />
+                  <BaseButton
+                    variant="secondary"
+                    size="sm"
+                    class="h-9 whitespace-nowrap"
+                    :loading="autoCodeRefreshing"
+                    :disabled="autoCodeSaving || !currentAccountHasCredential"
+                    @click="handleRefreshCodeNow"
+                  >
+                    <span class="i-carbon-renew mr-1" />
+                    立即刷新
+                  </BaseButton>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 我的账户：账户信息 / 卡密续费 / 我的农场账号 / 邀请好友 / 核销记录（自源项目移植） -->
+          <div class="farm-card rounded-lg p-4">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+                  我的账户
+                </h4>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ userStore.username }} ·
+                  {{ userStore.isAdmin ? '超级管理员（不限额度、永久有效）' : '普通用户' }}
+                </p>
+              </div>
+              <span
+                class="rounded-full px-3 py-1 text-xs font-medium"
+                :class="userStore.isExpired
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                  : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'"
+              >
+                {{ userStore.isExpired ? '已过期' : '有效' }}
+              </span>
+            </div>
+            <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="rounded-xl bg-gray-50/80 p-3 dark:bg-gray-900/40">
+                <div class="text-xs text-gray-500">
+                  到期时间
+                </div>
+                <div class="mt-1 text-sm text-gray-900 font-semibold dark:text-gray-100">
+                  {{ formatExpiresAt(userStore.subscription) }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-gray-50/80 p-3 dark:bg-gray-900/40">
+                <div class="text-xs text-gray-500">
+                  剩余时长
+                </div>
+                <div class="mt-1 text-sm text-gray-900 font-semibold dark:text-gray-100">
+                  {{ myRemainingText }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-gray-50/80 p-3 dark:bg-gray-900/40">
+                <div class="text-xs text-gray-500">
+                  农场账号额度
+                </div>
+                <div class="mt-1 text-sm text-gray-900 font-semibold dark:text-gray-100">
+                  {{ myUnlimited
+                    ? `${myAccountUsed} / 不限`
+                    : `${myAccountUsed} / ${userStore.accountLimit}（剩余 ${myAccountRemaining}）` }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="farm-card rounded-lg p-4">
+            <h4 class="mb-3 flex items-center gap-2 text-sm text-gray-900 font-semibold dark:text-gray-100">
+              <span class="i-carbon-gift text-base" />
+              卡密续费
+            </h4>
+            <div class="flex flex-wrap items-center gap-2">
+              <BaseInput
+                v-model="cardCode"
+                class="min-w-56 flex-1"
+                type="text"
+                placeholder="输入卡密，加时卡延长有效期、额度卡提升账号配额"
+                @keyup.enter="handleRenewCard"
+              />
+              <BaseButton
+                variant="primary"
+                size="sm"
+                :loading="cardSubmitting"
+                @click="handleRenewCard"
+              >
+                立即核销
+              </BaseButton>
+            </div>
+            <p class="mt-2 text-[11px] text-gray-400">
+              加时卡在未过期时会顺延有效期；已过期则从当前时间重新起算。永久卡优先级最高。
+            </p>
+          </div>
+
+          <div class="farm-card rounded-lg p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="flex items-center gap-2 text-sm text-gray-900 font-semibold dark:text-gray-100">
+                <span class="i-carbon-user-multiple text-base" />
+                我的农场账号
+              </h4>
+              <span class="text-xs text-gray-400">
+                仅显示我添加的账号 · 点击卡片可切换
+              </span>
+            </div>
+            <div v-if="myAccounts.length === 0" class="py-6 text-center text-sm text-gray-400">
+              暂无农场账号，请在上方账号管理中添加
+            </div>
+            <div v-else class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div
+                v-for="acc in myAccounts"
+                :key="acc.id"
+                class="flex cursor-pointer items-center justify-between border rounded-xl px-3 py-2.5 transition hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                style="border-color: var(--surface-border);"
+                @click="configMyAccount(acc)"
+              >
+                <div class="min-w-0">
+                  <div class="truncate text-sm text-gray-900 font-medium dark:text-gray-100">
+                    {{ acc.name || acc.nick || `账号 ${acc.id}` }}
+                  </div>
+                  <div class="text-[11px] text-gray-400">
+                    ID {{ acc.id }} · {{ acc.platform || '-' }}
+                  </div>
+                </div>
+                <span class="text-[var(--theme-primary)] text-xs">
+                  配置 →
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <InviteCard />
+
+          <div class="farm-card rounded-lg p-4">
+            <h4 class="mb-3 flex items-center gap-2 text-sm text-gray-900 font-semibold dark:text-gray-100">
+              <span class="i-carbon-receipt text-base" />
+              我的核销记录
+            </h4>
+            <div v-if="redemptionsLoading" class="py-5 text-center text-sm text-gray-400">
+              加载中…
+            </div>
+            <div v-else-if="myRedemptions.length === 0" class="py-5 text-center text-sm text-gray-400">
+              暂无记录
+            </div>
+            <div v-else class="space-y-2">
+              <div
+                v-for="item in myRedemptions"
+                :key="item.id"
+                class="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-xs last:border-0"
+                style="border-color: var(--surface-border);"
+              >
+                <span class="font-mono">{{ item.code }}</span>
+                <span class="text-gray-500">
+                  {{ item.cardType === 'quota' ? '额度卡' : '加时卡' }} · {{ item.summary }}
+                </span>
+                <span class="text-gray-400">{{ new Date(item.at).toLocaleString('zh-CN', { hour12: false }) }}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 策略设置 -->
@@ -2347,10 +2721,10 @@ async function handleResetSystemConfig() {
                     variant="outline"
                     size="sm"
                     :loading="captureTesting"
-                    :disabled="localCaptureConfig.embedded"
+                    :disabled="!localCaptureConfig.enabled"
                     @click="handleTestCapture"
                   >
-                    测试连接
+                    {{ localCaptureConfig.embedded ? '测试抓包服务' : '测试连接' }}
                   </BaseButton>
                   <BaseButton
                     variant="primary"
@@ -2456,14 +2830,14 @@ async function handleResetSystemConfig() {
                   />
 
                   <BaseInput
-                    v-if="!isDingTalkChannel"
+                    v-if="!isDingTalkChannel && !isSmtpChannel"
                     v-model="localOffline.token"
                     :label="offlineTokenLabel"
                     type="text"
                     :placeholder="offlineTokenPlaceholder"
                   />
 
-                  <template v-else>
+                  <template v-else-if="isDingTalkChannel">
                     <BaseInput
                       v-model="localOffline.secret"
                       label="加签密钥（可选）"
@@ -2488,7 +2862,60 @@ async function handleResetSystemConfig() {
                     min="0"
                     placeholder="0 表示不删除"
                   />
+
+                  <!-- SMTP 邮件渠道专属配置 -->
+                  <template v-if="isSmtpChannel">
+                    <BaseInput
+                      v-model="localOffline.smtpHost"
+                      label="SMTP 服务器地址"
+                      type="text"
+                      placeholder="如 smtp.qq.com"
+                    />
+                    <BaseInput
+                      v-model.number="localOffline.smtpPort"
+                      label="SMTP 端口"
+                      type="number"
+                      min="1"
+                      max="65535"
+                      placeholder="465（SSL）"
+                    />
+                    <BaseInput
+                      v-model="localOffline.smtpUser"
+                      label="邮箱账号"
+                      type="text"
+                      placeholder="发件人邮箱地址"
+                    />
+                    <BaseInput
+                      v-model="localOffline.smtpPass"
+                      label="授权码"
+                      type="password"
+                      placeholder="SMTP 授权码（非邮箱登录密码）"
+                    />
+                    <BaseInput
+                      v-model="localOffline.senderName"
+                      label="发件人名称"
+                      type="text"
+                      placeholder="发件人显示名称（可选）"
+                    />
+                    <BaseInput
+                      v-model="localOffline.recipientEmail"
+                      label="收件人邮箱"
+                      type="text"
+                      placeholder="接收通知的邮箱地址"
+                    />
+                    <BaseInput
+                      v-model="localOffline.emailContent"
+                      label="发信内容"
+                      type="text"
+                      placeholder="掉线提醒的自定义内容"
+                      class="sm:col-span-2"
+                    />
+                    <p class="text-xs text-gray-500 leading-relaxed sm:col-span-2 dark:text-gray-400">
+                      QQ 邮箱等需要在邮箱设置里开启 SMTP 服务并获取授权码；端口 465 走 SSL，其他端口（如 587）走 STARTTLS/明文。
+                    </p>
+                  </template>
                   <BaseInput
+                    v-else
                     v-model="localOffline.msg"
                     label="内容"
                     type="text"

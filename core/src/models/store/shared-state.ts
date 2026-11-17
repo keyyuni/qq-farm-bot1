@@ -1,4 +1,4 @@
-import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
+import type { AccountConfig, AutoCodeRefreshConfig, AutomationConfig, BagSeedFallbackStrategy, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
 export {};
 
 const { DEFAULT_TIME_ZONE, normalizeTimeZone, resolveClientVersion } = require('../../config/config');
@@ -39,6 +39,13 @@ const DEFAULT_OFFLINE_REMINDER: OfflineReminder = {
     title: '账号下线提醒',
     msg: '账号下线',
     offlineDeleteSec: 0,
+    smtpHost: '',
+    smtpPort: 465,
+    smtpUser: '',
+    smtpPass: '',
+    senderName: '',
+    recipientEmail: '',
+    emailContent: '',
 };
 
 const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
@@ -83,6 +90,10 @@ const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
     },
     plantingStrategy: 'max_exp',
     preferredSeedId: 0,
+    autoCodeRefresh: {
+        enabled: false,
+        intervalMinutes: 60,
+    },
     intervals: {
         farm: 2,
         farmMin: 20,
@@ -281,6 +292,14 @@ function normalizeIntervals(intervals: Partial<IntervalConfig> | undefined): Int
     } as IntervalConfig;
 }
 
+function normalizeAutoCodeRefresh(input: unknown): AutoCodeRefreshConfig {
+    const src: any = (input && typeof input === 'object') ? input : {};
+    return {
+        enabled: src.enabled === true,
+        intervalMinutes: Math.max(1, Math.min(1440, Number(src.intervalMinutes) || 60)),
+    };
+}
+
 function cloneAccountConfig(base: Partial<AccountConfig> = DEFAULT_ACCOUNT_CONFIG): AccountConfig {
     const srcAutomation = (base && base.automation && typeof base.automation === 'object')
         ? base.automation
@@ -306,6 +325,7 @@ function cloneAccountConfig(base: Partial<AccountConfig> = DEFAULT_ACCOUNT_CONFI
         ...DEFAULT_ACCOUNT_CONFIG,
         ...base,
         automation,
+        autoCodeRefresh: normalizeAutoCodeRefresh(base.autoCodeRefresh !== undefined ? base.autoCodeRefresh : DEFAULT_ACCOUNT_CONFIG.autoCodeRefresh),
         intervals: { ...(base.intervals || DEFAULT_ACCOUNT_CONFIG.intervals) },
         friendQuietHours: { ...DEFAULT_ACCOUNT_CONFIG.friendQuietHours, ...(base.friendQuietHours || {}) },
         knownFriendGids,
@@ -370,6 +390,10 @@ function normalizeAccountConfig(input: unknown, fallback: AccountConfig = accoun
 
     if (src.preferredSeedId !== undefined && src.preferredSeedId !== null) {
         cfg.preferredSeedId = Math.max(0, Number.parseInt(src.preferredSeedId, 10) || 0);
+    }
+
+    if (src.autoCodeRefresh && typeof src.autoCodeRefresh === 'object') {
+        cfg.autoCodeRefresh = normalizeAutoCodeRefresh(src.autoCodeRefresh);
     }
 
     if (src.intervals && typeof src.intervals === 'object') {
