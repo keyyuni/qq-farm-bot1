@@ -19,8 +19,6 @@ const appVersion = __APP_VERSION__
 const gameVersion = ref('')
 const wxGameVersion = ref('')
 
-const GITHUB_URL = 'https://github.com/liyangpengs/qq-farm-bot'
-
 const tab = ref<TabKey>('login')
 const loading = ref(false)
 const showRenew = ref(false)
@@ -569,10 +567,6 @@ onMounted(fetchGameVersion)
             <span class="i-carbon-renew" />
             <span>账号续费</span>
           </button>
-          <a class="quick-entry" :href="GITHUB_URL" target="_blank" rel="noopener noreferrer" title="GitHub 开源地址">
-            <span class="i-carbon-logo-github" />
-            <span>GitHub</span>
-          </a>
         </div>
         <p v-if="tab === 'login'" class="switch-hint">
           还没有账号？
@@ -853,7 +847,7 @@ onMounted(fetchGameVersion)
 
 .quick-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 12px;
 }
