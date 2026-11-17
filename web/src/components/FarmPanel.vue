@@ -9,6 +9,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import CareerHarvestSteal from '@/components/CareerHarvestSteal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import FarmSceneView from '@/components/FarmSceneView.vue'
 import LandCard from '@/components/FarmLandCard.vue'
 import LandDetailModal from '@/components/LandDetailModal.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
@@ -47,6 +48,16 @@ const { settings } = storeToRefs(settingStore)
 const { status } = storeToRefs(statusStore)
 const detailLandId = ref<number | null>(null)
 const detailLand = computed(() => lands.value.find(land => land.id === detailLandId.value) || null)
+
+// 土地视图：卡片列表 / 游戏实景（等距俯视）。选择模式强制用卡片视图。
+type LandViewMode = 'card' | 'scene'
+const viewMode = ref<LandViewMode>('card')
+const sceneAvailable = computed(() => !!currentAccountRunning.value && loaded.value && !error.value && (lands.value?.length || 0) > 0)
+function setViewMode(mode: LandViewMode) {
+  if (mode === 'scene' && selecting.value)
+    exitSelecting()
+  viewMode.value = mode
+}
 watch(currentAccountId, () => {
   detailLandId.value = null
 })
@@ -620,6 +631,14 @@ onUnmounted(() => {
           <h3 class="flex items-center gap-2 text-lg font-bold">
             <span class="i-carbon-sprout text-green-600" /> 土地详情
           </h3>
+          <div class="farm-view-switch" role="group" aria-label="土地视图切换">
+            <button type="button" :aria-pressed="viewMode === 'card'" :class="{ 'is-active': viewMode === 'card' }" title="卡片视图" @click="setViewMode('card')">
+              <span class="i-carbon-grid" aria-hidden="true" /><span>卡片</span>
+            </button>
+            <button type="button" :disabled="!sceneAvailable" :aria-pressed="viewMode === 'scene'" :class="{ 'is-active': viewMode === 'scene' }" title="实景视图" @click="setViewMode('scene')">
+              <span class="i-carbon-3d-cursor" aria-hidden="true" /><span>实景</span>
+            </button>
+          </div>
           <div class="farm-mobile-actions">
             <NButton size="small" :type="selecting ? 'default' : 'primary'" :secondary="!selecting" :disabled="selectionBusy || !currentAccountRunning || !loaded || !!error" @click="selecting ? exitSelecting() : enterSelecting()">
               {{ selecting ? '退出选择' : '批量操作' }}
@@ -796,7 +815,13 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="personal-panel__scroll custom-scrollbar" role="region" aria-label="土地列表" tabindex="0">
+          <FarmSceneView
+            v-if="viewMode === 'scene'"
+            :lands="lands"
+            interactive
+            @open="detailLandId = $event.id"
+          />
+          <div v-else class="personal-panel__scroll custom-scrollbar" role="region" aria-label="土地列表" tabindex="0">
             <div v-if="cleanableFarmSocialEvents.length > 0" class="mb-4 flex flex-wrap items-center justify-between gap-2 border border-emerald-200 rounded-xl bg-emerald-50/85 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
               <span class="flex items-center gap-2">
                 <span class="i-carbon-pedestrian-child" />
@@ -1115,6 +1140,47 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.farm-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-surface-strong) 60%, transparent);
+}
+
+.farm-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ui-subtle);
+  background: transparent;
+  font-size: 12px;
+  font-weight: var(--fw-650);
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.farm-view-switch button.is-active {
+  color: #fff;
+  background: var(--ui-primary-fill);
+}
+
+.farm-view-switch button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.farm-view-switch button:not(.is-active):not(:disabled):hover {
+  color: var(--ui-ink);
+  background: color-mix(in srgb, var(--ui-ink) 8%, transparent);
+}
+
 .farm-mobile-actions {
   display: none;
   align-items: center;
@@ -1133,7 +1199,20 @@ onUnmounted(() => {
     white-space: nowrap;
   }
 
+  .farm-view-switch {
+    margin-left: auto;
+  }
+
+  .farm-view-switch button {
+    padding: 3px 8px;
+  }
+
+  .farm-view-switch button span:last-child {
+    display: none;
+  }
+
   .farm-mobile-actions {
+    margin-left: 0;
     display: flex;
   }
 
