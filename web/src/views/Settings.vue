@@ -2070,6 +2070,55 @@ async function handleResetSystemConfig() {
             </div>
           </div>
 
+          <!-- 修改密码：所有登录用户可见，只改当前登录账号自己的密码（用户隔离） -->
+          <section class="farm-card rounded-lg p-4">
+            <div class="mb-4 flex items-start gap-3">
+              <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400">
+                <span class="i-carbon-password text-xl" />
+              </div>
+              <div>
+                <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+                  修改密码
+                </h4>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  修改当前登录账号（{{ userStore.username }}）的登录密码
+                </p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+              <BaseInput
+                v-model="passwordForm.old"
+                label="当前密码"
+                type="password"
+                placeholder="输入当前登录密码"
+              />
+              <BaseInput
+                v-model="passwordForm.new"
+                label="新密码"
+                type="password"
+                placeholder="至少 6 位"
+              />
+              <BaseInput
+                v-model="passwordForm.confirm"
+                label="确认新密码"
+                type="password"
+                placeholder="再次输入新密码"
+              />
+            </div>
+
+            <div class="mt-3 flex items-center justify-end border-t pt-3 dark:border-gray-700">
+              <BaseButton
+                variant="primary"
+                size="sm"
+                :loading="passwordSaving"
+                @click="handleChangePassword"
+              >
+                保存新密码
+              </BaseButton>
+            </div>
+          </section>
+
           <div class="farm-card rounded-lg p-4">
             <h4 class="mb-3 flex items-center gap-2 text-sm text-gray-900 font-semibold dark:text-gray-100">
               <span class="i-carbon-gift text-base" />
@@ -2723,55 +2772,6 @@ async function handleResetSystemConfig() {
                     @click="handleSaveCaptureConfig"
                   >
                     保存抓包设置
-                  </BaseButton>
-                </div>
-              </section>
-
-              <!-- 修改密码：所有登录用户可见，只改当前登录账号自己的密码（用户隔离） -->
-              <section class="farm-card rounded-lg p-4">
-                <div class="mb-4 flex items-start gap-3">
-                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400">
-                    <span class="i-carbon-password text-xl" />
-                  </div>
-                  <div>
-                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
-                      修改密码
-                    </h4>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      修改当前登录账号（{{ userStore.username }}）的登录密码
-                    </p>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <BaseInput
-                    v-model="passwordForm.old"
-                    label="当前密码"
-                    type="password"
-                    placeholder="输入当前登录密码"
-                  />
-                  <BaseInput
-                    v-model="passwordForm.new"
-                    label="新密码"
-                    type="password"
-                    placeholder="至少 6 位"
-                  />
-                  <BaseInput
-                    v-model="passwordForm.confirm"
-                    label="确认新密码"
-                    type="password"
-                    placeholder="再次输入新密码"
-                  />
-                </div>
-
-                <div class="mt-3 flex items-center justify-end border-t pt-3 dark:border-gray-700">
-                  <BaseButton
-                    variant="primary"
-                    size="sm"
-                    :loading="passwordSaving"
-                    @click="handleChangePassword"
-                  >
-                    保存新密码
                   </BaseButton>
                 </div>
               </section>
