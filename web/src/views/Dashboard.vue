@@ -620,7 +620,7 @@ useIntervalFn(updateCountdowns, 1000)
     <!-- Main Content Flex -->
     <div class="flex flex-1 flex-col items-stretch gap-6 md:flex-row">
       <!-- Logs (Left Column) -->
-      <div class="flex flex-1 flex-col gap-6 md:w-3/4">
+      <div class="order-2 flex flex-1 flex-col gap-6 md:order-1 md:w-3/4">
         <!-- Logs -->
         <div class="flex flex-1 flex-col farm-card rounded-2xl bg-white p-5 shadow-md md:overflow-hidden dark:bg-gray-800">
           <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -709,7 +709,7 @@ useIntervalFn(updateCountdowns, 1000)
       </div>
 
       <!-- Right Column Stack -->
-      <div class="min-w-0 flex flex-col gap-6 md:w-1/4 md:self-start">
+      <div class="order-1 flex min-w-0 flex-col gap-6 md:order-2 md:w-1/4 md:self-start">
         <!-- Next Checks -->
         <div class="flex flex-col farm-card rounded-2xl bg-white p-6 shadow-md dark:bg-gray-800">
           <h3 class="mb-4 flex items-center gap-2 text-lg font-display font-medium">
