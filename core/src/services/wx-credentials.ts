@@ -69,7 +69,7 @@ async function keepWxCredentialAlive(account: any): Promise<{ Success: boolean; 
     if (!acc.wxid || !acc.refreshtoken || !acc.loginBuffer) {
         return { Success: false, Message: '缺少微信凭证（refreshtoken/loginBuffer），请重新扫码登录' };
     }
-    const { store } = require('../models/store');
+    const store = require('../models/store');
     return withAccountCredentialLock(acc.wxid, acc.id, async () => {
         try {
             const refreshed = await wxLoginService.refreshLoginBuffer({
@@ -109,7 +109,7 @@ async function issueFarmCodeForAccount(account: any): Promise<{ Success: boolean
     if (!wxid) return { Success: false, Message: '账号缺少 wxid，无法自动刷新 Code' };
     if (!acc.loginBuffer) return { Success: false, Message: '账号缺少登录凭证（loginBuffer），请重新扫码登录' };
 
-    const { store } = require('../models/store');
+    const store = require('../models/store');
     const requestKey = `account:${String(acc.id || wxid)}`;
     const inFlight = farmCodeRequests.get(requestKey);
     if (inFlight) return inFlight;
@@ -124,15 +124,23 @@ async function issueFarmCodeForAccount(account: any): Promise<{ Success: boolean
         } catch { /* keep acc */ }
 
         try {
+            // 注意：这里已经持有 withAccountCredentialLock 锁，绝不能调用同样加锁的
+            // keepWxCredentialAlive（同 key 重入会死锁）。直接调用底层无锁的
+            // refreshLoginBuffer 做主动续期（对齐源项目 qq-farm-bot 的做法）。
             if (latest.refreshtoken) {
-                const keepalive = await keepWxCredentialAlive(latest);
-                if (!keepalive.Success) throw new Error(keepalive.Message || '微信凭证续期失败');
+                const refreshed = await wxLoginService.refreshLoginBuffer({
+                    openid: String(latest.wxid),
+                    refreshtoken: String(latest.refreshtoken),
+                    accesstoken: String(latest.accesstoken || ''),
+                    cookies: new Map(),
+                });
+                persistAccountFields(store.addOrUpdateAccount, latest, {
+                    loginBuffer: refreshed.loginBuffer,
+                    refreshtoken: refreshed.refreshtoken,
+                    accesstoken: refreshed.accesstoken || latest.accesstoken || '',
+                });
                 // 保活成功后重读（loginBuffer/refreshtoken 已滚动）
-                try {
-                    const data = store.getAccounts();
-                    const found = (data.accounts || []).find((a: any) => String(a.id) === String(latest.id));
-                    if (found) latest = found;
-                } catch { /* keep */ }
+                latest = { ...latest, ...refreshed };
             }
 
             let code = '';

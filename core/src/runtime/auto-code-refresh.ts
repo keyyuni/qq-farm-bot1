@@ -93,8 +93,14 @@ function createAutoCodeRefreshService(options: AutoCodeRefreshOptions) {
     }
 
     async function refreshAccountCode(accountId: string, reason: string = 'timer'): Promise<boolean> {
+        log('系统', `[自动重登] 刷新流程进入: reason=${reason}`, {
+            accountId: String(accountId),
+        });
         const account = findAccount(accountId);
-        if (!account) return false;
+        if (!account) {
+            log('警告', `[自动重登] 找不到账号 ${accountId}，放弃刷新`);
+            return false;
+        }
 
         // 只有微信扫码号才有可再生凭证（wxid + 登录缓冲）。
         // QQ 号没有任何本地凭据可以换新 Code，硬刷只会刷出一串「缺少 wxid」错误，
@@ -234,6 +240,7 @@ function createAutoCodeRefreshService(options: AutoCodeRefreshOptions) {
         reloginStreak.set(key, attempt);
         const delayMs = reloginDelayMs(attempt, cfg.intervalMinutes);
         scheduler.setTimeoutTask(taskName, delayMs, () => {
+            log('系统', `[自动重登] 定时器触发: ${account.name}`, { accountId: String(accountId), reason });
             refreshAccountCode(accountId, reason);
         });
         const human = delayMs >= 60000 ? `${Math.round(delayMs / 60000)} 分钟` : `${Math.round(delayMs / 1000)} 秒`;
