@@ -11,6 +11,9 @@ export interface Account {
   avatar?: string
   platform?: string
   running?: boolean
+  // 归属：创建/绑定该账号的登录用户名（owner 优先，兼容旧数据回落 username）
+  owner?: string
+  username?: string
   // Add other fields as discovered
 }
 

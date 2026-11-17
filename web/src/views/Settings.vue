@@ -1588,7 +1588,7 @@ async function handleTestOffline() {
                         {{ getPlatformLabel(acc.platform) }}
                       </span>
                       <span class="truncate text-xs text-gray-500 sm:text-sm">
-                        {{ acc.uin || '未绑定' }}
+                        {{ acc.uin || acc.owner || acc.username || '未绑定' }}
                       </span>
                     </div>
                   </div>
