@@ -336,6 +336,20 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /** 用户自助更新个人资料（收件邮箱）：后端只接受白名单字段 */
+  async function updateProfile(payload: { email?: string }) {
+    try {
+      const res = await api.post('/api/user/profile', payload, SKIP_TOAST)
+      const result = unwrap(res)
+      if (result.ok && userInfo.value)
+        userInfo.value = { ...userInfo.value, ...(res.data?.data || {}) } as User
+      return result
+    }
+    catch (error: any) {
+      return error?.response?.data || { ok: false, error: error?.message || '网络错误' }
+    }
+  }
+
   async function verifyResetPassword(name: string, cardCode: string) {
     try {
       const res = await api.post('/api/public/reset-password/verify', { username: name, cardCode }, SKIP_TOAST)
@@ -578,6 +592,7 @@ export const useUserStore = defineStore('user', () => {
     claimFreeCard,
     renew,
     changePassword,
+    updateProfile,
     verifyResetPassword,
     resetPassword,
     fetchUsers,

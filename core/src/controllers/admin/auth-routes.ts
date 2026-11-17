@@ -536,12 +536,16 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
                 String(account.owner || account.username || '') === String(currentUser.username)).length;
         const limit = Number(currentUser.accountLimit);
         const unlimited = isElevatedRole(currentUser.role) || limit === -1;
+        // session 不含 email/nick，现查用户资料（超管来自 env 时可能无记录，回退空串）
+        const profile = userStore.getUserByName(currentUser.username);
 
         res.json({
             ok: true,
             data: {
                 username: currentUser.username,
                 role: currentUser.role,
+                nick: profile?.nick || '',
+                email: profile?.email || '',
                 card: subscription,
                 subscription,
                 accountLimit: currentUser.accountLimit,
@@ -555,6 +559,25 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
                 allowPublicResetPassword: USER_SYSTEM_CONFIG.allowPublicResetPassword === true,
             },
         });
+    });
+
+    /** 用户自助更新个人资料（目前仅收件邮箱）：白名单字段，不能改角色/额度/密码 */
+    app.post('/api/user/profile', (req: any, res: Response) => {
+        const currentUser = req.currentUser;
+        if (!currentUser || !currentUser.username)
+            return res.status(401).json({ ok: false, error: '未登录' });
+
+        const body = (req.body && typeof req.body === 'object') ? req.body : {};
+        const rawEmail = String(body.email ?? '').trim();
+        if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail))
+            return res.status(400).json({ ok: false, error: '邮箱格式不正确' });
+
+        // 只信任会话里的用户名，绝不接收前端传来的 username，避免越权改他人资料
+        const result = userStore.editUser(currentUser.username, { email: rawEmail });
+        if (!result || result.ok === false)
+            return res.status(400).json({ ok: false, error: (result && result.error) || '保存失败' });
+
+        return res.json({ ok: true, data: { email: rawEmail } });
     });
 }
 
