@@ -214,7 +214,7 @@ onMounted(loadRecipients)
         <h2 class="text-base text-gray-900 font-semibold dark:text-gray-100">
           发送通知邮件
         </h2>
-        <span class="text-xs text-gray-400">使用上方「全局邮件服务」的 SMTP（需先配置并启用）</span>
+        <span class="text-xs text-gray-400">使用「全局设置 → 全局邮件服务」的 SMTP（需先配置并启用）</span>
       </div>
       <p class="mb-3 text-xs text-gray-500 leading-relaxed dark:text-gray-400">
         收件地址取用户账号资料里的邮箱。默认不发送给已过期用户，需要时可在下方打开「包含已过期用户」。
@@ -289,12 +289,13 @@ onMounted(loadRecipients)
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm text-gray-900 dark:text-gray-100">{{ item.username }}</span>
               <span v-if="item.role === 'super_admin'" class="rounded bg-purple-100 px-1.5 text-[11px] text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">超管</span>
+              <span v-else-if="item.role === 'admin'" class="rounded bg-blue-100 px-1.5 text-[11px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">管理员</span>
               <span v-if="item.isExpired" class="rounded bg-red-100 px-1.5 text-[11px] text-red-600 dark:bg-red-900/40 dark:text-red-300">
                 已过期{{ item.expiresAtText ? ` · ${item.expiresAtText}` : '' }}
               </span>
             </div>
             <div class="text-xs" :class="item.email ? 'text-gray-500 dark:text-gray-400' : 'text-orange-500'">
-              {{ item.email || '未填写邮箱（请管理员在用户管理里补邮箱）' }}
+              {{ item.email || '未填写邮箱（通知设置里填收件邮箱，或在账号资料里补邮箱）' }}
             </div>
           </div>
         </label>

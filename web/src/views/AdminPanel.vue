@@ -13,13 +13,14 @@ import { useUserStore } from '@/stores/user'
 const userStore = useUserStore()
 const toast = useToastStore()
 
-type TabKey = 'users' | 'cards' | 'invite' | 'redemptions' | 'logs' | 'announcement' | 'mail'
+type TabKey = 'users' | 'cards' | 'invite' | 'redemptions' | 'logs' | 'global' | 'announcement' | 'mail'
 const tab = ref<TabKey>('users')
 const tabs: { key: TabKey, label: string, icon: string }[] = [
   { key: 'users', label: '用户管理', icon: 'i-carbon-user-multiple' },
   { key: 'cards', label: '卡密管理', icon: 'i-carbon-purchase' },
   { key: 'invite', label: '邀请奖励', icon: 'i-carbon-user-follow' },
   { key: 'redemptions', label: '核销流水', icon: 'i-carbon-receipt' },
+  { key: 'global', label: '全局设置', icon: 'i-carbon-settings' },
   { key: 'logs', label: '登录日志', icon: 'i-carbon-document' },
   { key: 'announcement', label: '公告', icon: 'i-carbon-notification' },
   { key: 'mail', label: '邮件通知', icon: 'i-carbon-send-alt' },
@@ -288,11 +289,11 @@ onMounted(() => {
 
     <AdminAnnouncementPanel v-else-if="tab === 'announcement'" />
 
-    <!-- 邮件通知：先配置并启用全局邮件服务，再批量发通知 -->
-    <div v-else-if="tab === 'mail'" class="space-y-4">
-      <AdminMailerCard />
-      <AdminMailPanel />
-    </div>
+    <!-- 全局设置：全局邮件服务（用户「通知设置」勾选复用；邮件通知群发也用这套 SMTP） -->
+    <AdminMailerCard v-else-if="tab === 'global'" />
+
+    <!-- 邮件通知：使用「全局设置」里配置的邮件服务批量发通知 -->
+    <AdminMailPanel v-else-if="tab === 'mail'" />
   </div>
 </template>
 

@@ -13,6 +13,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import PageTabs from '@/components/PageTabs.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
 import BagSeedPriorityItem from '@/components/settings/BagSeedPriorityItem.vue'
+import OfflineReminderCard from '@/components/settings/OfflineReminderCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
@@ -50,9 +51,9 @@ const userStore = useUserStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'my-account' | 'admin-panel'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'notification' | 'system' | 'my-account' | 'admin-panel'
 const storedTab = localStorage.getItem('settings-active-tab')
-const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'my-account', 'admin-panel']
+const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'notification', 'system', 'my-account', 'admin-panel']
 // 牧场的自动化与养殖策略已移到「牧场策略」页，设置页只保留账号与系统。
 const ranchTabKeys: SettingsTab[] = ['account', 'system']
 const queryTab = String(route.query.tab || '')
@@ -86,7 +87,8 @@ const tabs = [
   { key: 'account', label: '账号管理', icon: 'i-carbon-user-profile' },
   { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
-  { key: 'system', label: '系统设置', icon: 'i-carbon-settings' },
+  { key: 'notification', label: '通知设置', icon: 'i-carbon-notification' },
+  { key: 'system', label: '全局设置', icon: 'i-carbon-settings' },
   { key: 'my-account', label: '我的账号', icon: 'i-carbon-user-avatar' },
   { key: 'admin-panel', label: '管理后台', icon: 'i-carbon-user-admin' },
 ] as const
@@ -288,6 +290,11 @@ function configMyAccount(acc: any) {
 
 onMounted(loadMyRedemptions)
 
+// 全局邮件服务可用状态与账号无关，进页面即刷新（通知设置页开关是否可用）
+onMounted(() => {
+  settingStore.fetchGlobalMailer()
+})
+
 onMounted(async () => {
   await accountStore.fetchAccounts()
   if (!currentAccountId.value && accounts.value.length > 0 && accounts.value[0]) {
@@ -295,6 +302,9 @@ onMounted(async () => {
   }
   if (currentAccountId.value)
     await loadStrategyData(currentAccountId.value)
+  // 未选择账号时也要能加载自己的下线提醒配置（通知设置页）
+  if (!currentAccountId.value)
+    await settingStore.fetchUserSettings()
   // 抓包登录配置是管理接口，仅超级管理员加载
   const loads: Array<Promise<void>> = [loadSystemConfig(), loadDevicePresets()]
   if (userStore.isSuperAdmin)
@@ -1228,7 +1238,7 @@ async function saveAutomationSettings() {
   }
 }
 
-// ==================== 系统设置 ====================
+// ==================== 全局设置 ====================
 const passwordSaving = ref(false)
 const offlineSaving = ref(false)
 const offlineTesting = ref(false)
@@ -1254,7 +1264,11 @@ const localOffline = ref({
   senderName: '',
   recipientEmail: '',
   emailContent: '',
+  useGlobalMailer: false,
 })
+
+// 管理员是否已配置好全局邮件服务（用户勾选后免填 SMTP 账号密码）
+const globalMailerAvailable = computed(() => settingStore.settings?.globalMailer?.available === true)
 
 const channelOptions = [
   { label: 'SMTP 邮件', value: 'smtp' },
@@ -1305,17 +1319,7 @@ const CHANNEL_DOCS: Record<string, string> = {
 
 const offlineChannel = computed(() => String(localOffline.value.channel || '').trim().toLowerCase())
 const isDingTalkChannel = computed(() => offlineChannel.value === 'dingtalk')
-const isMeowChannel = computed(() => offlineChannel.value === 'meow')
 const isSmtpChannel = computed(() => offlineChannel.value === 'smtp')
-const offlineChannelUsesEndpoint = computed(() => offlineChannel.value === 'webhook' || isDingTalkChannel.value)
-const offlineEndpointLabel = computed(() => isDingTalkChannel.value ? 'Webhook 地址' : '接口地址')
-const offlineEndpointPlaceholder = computed(() => isDingTalkChannel.value
-  ? '从钉钉群机器人设置页复制完整 Webhook'
-  : '接收消息的接口地址')
-const offlineTokenLabel = computed(() => isMeowChannel.value ? '昵称' : 'Token')
-const offlineTokenPlaceholder = computed(() => isMeowChannel.value
-  ? 'MeoW 注册昵称'
-  : '接收端 token')
 const currentChannelDocUrl = computed(() => CHANNEL_DOCS[offlineChannel.value] || '')
 
 function openChannelDocs() {
@@ -1343,6 +1347,7 @@ function syncLocalOfflineSettings() {
       senderName: '',
       recipientEmail: '',
       emailContent: '',
+      useGlobalMailer: false,
       ...saved,
     }
 
@@ -1386,12 +1391,15 @@ function validateDingTalkWebhook(): string {
 
 function validateOfflineForm(): string {
   if (isSmtpChannel.value) {
-    if (!String(localOffline.value.smtpHost || '').trim())
-      return '请填写 SMTP 服务器地址（如 smtp.qq.com）'
-    if (!String(localOffline.value.smtpUser || '').trim())
-      return '请填写发件邮箱账号'
-    if (!String(localOffline.value.smtpPass || '').trim())
-      return '请填写 SMTP 授权码'
+    // 勾选「使用管理员配置的邮件服务」时免填 SMTP 账号密码
+    if (!localOffline.value.useGlobalMailer) {
+      if (!String(localOffline.value.smtpHost || '').trim())
+        return '请填写 SMTP 服务器地址（如 smtp.qq.com）'
+      if (!String(localOffline.value.smtpUser || '').trim())
+        return '请填写发件邮箱账号'
+      if (!String(localOffline.value.smtpPass || '').trim())
+        return '请填写 SMTP 授权码'
+    }
     if (!String(localOffline.value.recipientEmail || '').trim())
       return '请填写收件人邮箱'
     return ''
@@ -2497,10 +2505,45 @@ async function handleResetSystemConfig() {
           />
         </div>
 
-        <!-- 系统设置 -->
+        <!-- 通知设置：所有用户可见，按登录用户保存自己的下线提醒/收件邮箱 -->
+        <div v-else-if="activeTab === 'notification'" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg text-gray-900 font-bold dark:text-gray-100">
+                通知设置
+              </h3>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                配置账号离线后的通知渠道和消息内容。
+              </p>
+            </div>
+            <BaseButton
+              size="sm"
+              :loading="offlineSaving"
+              :disabled="offlineTesting"
+              @click="handleSaveOffline"
+            >
+              保存通知设置
+            </BaseButton>
+          </div>
+
+          <OfflineReminderCard
+            v-model:config="localOffline"
+            :channel-options="channelOptions"
+            :current-channel-doc-url="currentChannelDocUrl"
+            :saving="offlineSaving"
+            :testing="offlineTesting"
+            :show-save="false"
+            :global-mailer-available="globalMailerAvailable"
+            @open-docs="openChannelDocs"
+            @test="handleTestOffline"
+            @save="handleSaveOffline"
+          />
+        </div>
+
+        <!-- 全局设置 -->
         <div v-else-if="activeTab === 'system'" class="space-y-4">
           <h3 class="text-lg text-gray-900 font-bold dark:text-gray-100">
-            系统设置
+            全局设置
           </h3>
 
           <!-- 全局功能开关：仅超级管理员可见 -->
@@ -2780,165 +2823,6 @@ async function handleResetSystemConfig() {
                 </div>
               </section>
 
-              <!-- 下线提醒：全局推送配置（Webhook/钉钉），仅超级管理员可见可改 -->
-              <section v-if="userStore.isSuperAdmin" class="farm-card rounded-lg p-4">
-                <div class="mb-4 flex items-start gap-3">
-                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-600 dark:bg-green-900/25 dark:text-green-400">
-                    <span class="i-carbon-notification text-xl" />
-                  </div>
-                  <div>
-                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
-                      下线提醒
-                    </h4>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      配置账号离线后的通知与清理
-                    </p>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div class="min-w-0 flex flex-col gap-1.5">
-                    <div class="min-h-6 flex items-center justify-between gap-2">
-                      <span class="text-sm text-gray-700 font-medium dark:text-gray-300">推送渠道</span>
-                      <BaseButton
-                        variant="text"
-                        size="sm"
-                        :disabled="!currentChannelDocUrl"
-                        @click="openChannelDocs"
-                      >
-                        官方文档
-                      </BaseButton>
-                    </div>
-                    <BaseSelect
-                      v-model="localOffline.channel"
-                      :options="channelOptions"
-                    />
-                  </div>
-
-                  <BaseInput
-                    v-if="offlineChannelUsesEndpoint"
-                    v-model="localOffline.endpoint"
-                    :label="offlineEndpointLabel"
-                    type="text"
-                    :placeholder="offlineEndpointPlaceholder"
-                  />
-
-                  <BaseInput
-                    v-if="!isDingTalkChannel && !isSmtpChannel"
-                    v-model="localOffline.token"
-                    :label="offlineTokenLabel"
-                    type="text"
-                    :placeholder="offlineTokenPlaceholder"
-                  />
-
-                  <template v-else-if="isDingTalkChannel">
-                    <BaseInput
-                      v-model="localOffline.secret"
-                      label="加签密钥（可选）"
-                      type="password"
-                      placeholder="仅在机器人开启加签时填写 SEC..."
-                    />
-                    <p class="text-xs text-gray-500 leading-relaxed sm:col-span-2 dark:text-gray-400">
-                      从群机器人的设置页复制完整 Webhook；只有开启“加签”时才需要填写加签密钥。
-                    </p>
-                  </template>
-
-                  <BaseInput
-                    v-model="localOffline.title"
-                    label="标题"
-                    type="text"
-                    placeholder="提醒标题"
-                  />
-                  <BaseInput
-                    v-model.number="localOffline.offlineDeleteSec"
-                    label="离线删除账号 (秒)"
-                    type="number"
-                    min="0"
-                    placeholder="0 表示不删除"
-                  />
-
-                  <!-- SMTP 邮件渠道专属配置 -->
-                  <template v-if="isSmtpChannel">
-                    <BaseInput
-                      v-model="localOffline.smtpHost"
-                      label="SMTP 服务器地址"
-                      type="text"
-                      placeholder="如 smtp.qq.com"
-                    />
-                    <BaseInput
-                      v-model.number="localOffline.smtpPort"
-                      label="SMTP 端口"
-                      type="number"
-                      min="1"
-                      max="65535"
-                      placeholder="465（SSL）"
-                    />
-                    <BaseInput
-                      v-model="localOffline.smtpUser"
-                      label="邮箱账号"
-                      type="text"
-                      placeholder="发件人邮箱地址"
-                    />
-                    <BaseInput
-                      v-model="localOffline.smtpPass"
-                      label="授权码"
-                      type="password"
-                      placeholder="SMTP 授权码（非邮箱登录密码）"
-                    />
-                    <BaseInput
-                      v-model="localOffline.senderName"
-                      label="发件人名称"
-                      type="text"
-                      placeholder="发件人显示名称（可选）"
-                    />
-                    <BaseInput
-                      v-model="localOffline.recipientEmail"
-                      label="收件人邮箱"
-                      type="text"
-                      placeholder="接收通知的邮箱地址"
-                    />
-                    <BaseInput
-                      v-model="localOffline.emailContent"
-                      label="发信内容"
-                      type="text"
-                      placeholder="掉线提醒的自定义内容"
-                      class="sm:col-span-2"
-                    />
-                    <p class="text-xs text-gray-500 leading-relaxed sm:col-span-2 dark:text-gray-400">
-                      QQ 邮箱等需要在邮箱设置里开启 SMTP 服务并获取授权码；端口 465 走 SSL，其他端口（如 587）走 STARTTLS/明文。
-                    </p>
-                  </template>
-                  <BaseInput
-                    v-else
-                    v-model="localOffline.msg"
-                    label="内容"
-                    type="text"
-                    placeholder="提醒内容"
-                    class="sm:col-span-2"
-                  />
-                </div>
-
-                <div class="mt-3 flex justify-end gap-2 border-t pt-3 dark:border-gray-700">
-                  <BaseButton
-                    variant="secondary"
-                    size="sm"
-                    :loading="offlineTesting"
-                    :disabled="offlineSaving"
-                    @click="handleTestOffline"
-                  >
-                    测试通知
-                  </BaseButton>
-                  <BaseButton
-                    variant="primary"
-                    size="sm"
-                    :loading="offlineSaving"
-                    :disabled="offlineTesting"
-                    @click="handleSaveOffline"
-                  >
-                    保存下线提醒设置
-                  </BaseButton>
-                </div>
-              </section>
             </div>
           </div>
         </div>

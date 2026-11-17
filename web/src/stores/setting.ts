@@ -87,6 +87,20 @@ export interface OfflineConfig {
   title: string
   msg: string
   offlineDeleteSec: number
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPass?: string
+  senderName?: string
+  recipientEmail?: string
+  emailContent?: string
+  /** SMTP 渠道专用：使用管理员配置的全局邮件服务（免填 SMTP 账号密码） */
+  useGlobalMailer?: boolean
+}
+
+export interface GlobalMailerPublic {
+  available: boolean
+  senderName: string
 }
 
 export interface UIConfig {
@@ -107,6 +121,8 @@ export interface SettingsState {
   automation: AutomationConfig
   ui: UIConfig
   offlineReminder: OfflineConfig
+  /** 管理员是否配置好全局邮件服务（用户在通知设置里可勾选复用） */
+  globalMailer: GlobalMailerPublic
   stealDelaySeconds: number
   plantOrderRandom: boolean
   plantDelaySeconds: number
@@ -197,7 +213,16 @@ function createDefaultSettings(): SettingsState {
       title: '账号下线提醒',
       msg: '账号下线',
       offlineDeleteSec: 0,
+      smtpHost: '',
+      smtpPort: 465,
+      smtpUser: '',
+      smtpPass: '',
+      senderName: '',
+      recipientEmail: '',
+      emailContent: '',
+      useGlobalMailer: false,
     },
+    globalMailer: { available: false, senderName: '' },
     stealDelaySeconds: 0,
     plantOrderRandom: false,
     plantDelaySeconds: 0,
@@ -262,6 +287,10 @@ export const useSettingStore = defineStore('setting', () => {
       offlineReminder: {
         ...defaults.offlineReminder,
         ...(cloneValue(data.offlineReminder) || {}),
+      },
+      globalMailer: {
+        available: data.globalMailer?.available === true,
+        senderName: String(data.globalMailer?.senderName || ''),
       },
       stealDelaySeconds: data.stealDelaySeconds ?? defaults.stealDelaySeconds,
       plantOrderRandom: data.plantOrderRandom ?? defaults.plantOrderRandom,
@@ -367,6 +396,38 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
+  /** 与账号无关：拉取当前登录用户自己的设置（通知设置页未选账号时也能用） */
+  async function fetchUserSettings() {
+    beginRequest()
+    try {
+      const { data } = await api.get('/api/settings')
+      if (data && data.ok && data.data)
+        applyFetchedSettings(data.data)
+    }
+    catch {
+      // 静默失败：保持已有状态
+    }
+    finally {
+      endRequest()
+    }
+  }
+
+  /** 刷新全局邮件服务可用状态（与账号无关） */
+  async function fetchGlobalMailer() {
+    try {
+      const { data } = await api.get('/api/settings/mailer')
+      if (data?.ok && data.data) {
+        settings.value.globalMailer = {
+          available: data.data.available === true,
+          senderName: String(data.data.senderName || ''),
+        }
+      }
+    }
+    catch {
+      // 静默失败：保持已有状态
+    }
+  }
+
   async function saveOfflineConfig(config: OfflineConfig) {
     beginRequest()
     try {
@@ -385,5 +446,5 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  return { settings, loading, loadedAccountId, fetchSettings, saveSettings, saveOfflineConfig }
+  return { settings, loading, loadedAccountId, fetchSettings, saveSettings, saveOfflineConfig, fetchUserSettings, fetchGlobalMailer }
 })
