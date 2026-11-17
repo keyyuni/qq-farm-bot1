@@ -148,11 +148,12 @@ test('saving or resetting connection settings never restarts live QQ or WeChat a
             broadcastConfig: () => broadcasts++,
         } });
         let response;
-        const res = { json: value => { response = value; } };
-        routes.get('/api/settings/system-config')({ body: { ...saved, wxClientVersion: 'wx-changed' } }, res);
+        const res = { status() { return this; }, json: value => { response = value; } };
+        const currentUser = { role: 'super_admin' };
+        routes.get('/api/settings/system-config')({ currentUser, body: { ...saved, wxClientVersion: 'wx-changed' } }, res);
         assert.equal(response.ok, true);
         assert.equal(response.data.saved.wxClientVersion, 'wx-changed');
-        routes.get('/api/settings/system-config/reset')({}, res);
+        routes.get('/api/settings/system-config/reset')({ currentUser }, res);
         assert.equal(response.ok, true);
         assert.equal(response.data.current.wxClientVersion, config.DEFAULT_WX_CLIENT_VERSION);
         assert.equal(broadcasts, 2);
