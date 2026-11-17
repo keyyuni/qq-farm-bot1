@@ -447,8 +447,12 @@ function createWorkerManager(options: WorkerManagerOptions) {
                 { source, disconnectCode: code, reason, phase, connectionId: Number(msg.connectionId) || 0, diagnostics: msg.diagnostics || null },
             );
             stopWorker(accountId);
-            // 微信定时刷新：连接断开后按阶梯延迟自动重登（QQ 号无凭证会静默跳过）
-            if (typeof scheduleAutoRelogin === 'function') {
+            // 微信定时刷新：连接断开后按阶梯延迟自动重登（QQ 号无凭证会静默跳过）。
+            // WS 400（source=ws_error）的恢复已由上面的 ws_error 分支全权负责：
+            // 它先即时换 Code 重启，失败再降级到 ws_400_refresh_failed 阶梯。
+            // 这里若再排一次 ws_reconnect_failed 阶梯，会让一次掉线重连两次，故跳过。
+            const isWs400Disconnect = source === 'ws_error' && code === 400;
+            if (typeof scheduleAutoRelogin === 'function' && !isWs400Disconnect) {
                 scheduleAutoRelogin(accountId, `ws_reconnect_failed:${reason}`);
             }
         } else if (msg.type === 'api_response') {
