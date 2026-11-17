@@ -1200,17 +1200,18 @@ onUnmounted(() => {
   }
 
   .farm-view-switch {
-    margin-left: auto;
+    margin-left: 0;
   }
 
   .farm-view-switch button {
-    gap: 3px;
-    padding: 3px 7px;
-    font-size: 11px;
+    gap: 2px;
+    padding: 2px 6px;
+    font-size: 10px;
+    line-height: 16px;
   }
 
   .farm-mobile-actions {
-    margin-left: 0;
+    margin-left: auto;
     display: flex;
   }
 
