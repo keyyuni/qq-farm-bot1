@@ -8,6 +8,7 @@ import api, { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
+import { copyTextToClipboard } from '@/utils/clipboard'
 import { runWxLoginStatusPoll } from '@/utils/wx-login-poll'
 
 const props = defineProps<{
@@ -278,36 +279,17 @@ async function copyCaptureValue(field: 'host' | 'port') {
   if (!host || !port)
     return
   const value = field === 'host' ? host : String(port)
-  try {
-    let copied = false
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-        copied = true
-      }
-      catch {}
-    }
-    if (!copied) {
-      const textarea = document.createElement('textarea')
-      textarea.value = value
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      copied = document.execCommand('copy')
-      textarea.remove()
-    }
-    if (!copied)
-      throw new Error('copy failed')
-    captureCopiedField.value = field
-    setTimeout(() => {
-      if (captureCopiedField.value === field)
-        captureCopiedField.value = ''
-    }, 1800)
-  }
-  catch {
+  const copied = await copyTextToClipboard(value)
+  if (!copied) {
     captureError.value = '复制失败，请手动填写代理地址和端口'
+    return
   }
+  captureError.value = ''
+  captureCopiedField.value = field
+  setTimeout(() => {
+    if (captureCopiedField.value === field)
+      captureCopiedField.value = ''
+  }, 1800)
 }
 
 const wechatQrLoginEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.wechatQrLogin)

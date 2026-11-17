@@ -49,13 +49,13 @@ const userStore = useUserStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'admin-panel'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'my-account' | 'admin-panel'
 const storedTab = localStorage.getItem('settings-active-tab')
-const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'admin-panel']
+const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'my-account', 'admin-panel']
 const queryTab = String(route.query.tab || '')
 const initialTabRaw = settingsTabKeys.includes(queryTab as SettingsTab)
   ? queryTab as SettingsTab
-  : storedTab === 'user' ? 'system' : (storedTab as SettingsTab) || 'account'
+  : storedTab === 'user' ? 'my-account' : (storedTab as SettingsTab) || 'account'
 // 管理后台仅超级管理员可见：无权限用户恢复到该页签时回落到账号管理
 const initialTab = initialTabRaw === 'admin-panel' && !userStore.isSuperAdmin ? 'account' : initialTabRaw
 const activeTab = ref<SettingsTab>(initialTab)
@@ -80,6 +80,7 @@ const tabs = [
   { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
   { key: 'system', label: '系统设置', icon: 'i-carbon-settings' },
+  { key: 'my-account', label: '我的账号', icon: 'i-carbon-user-avatar' },
   { key: 'admin-panel', label: '管理后台', icon: 'i-carbon-user-admin' },
 ] as const
 
@@ -1938,7 +1939,10 @@ async function handleResetSystemConfig() {
             @cancel="!clearStoppedLoading && (showClearStoppedConfirm = false)"
             @confirm="confirmClearStopped"
           />
+        </div>
 
+        <!-- 我的账号：账户信息 / 卡密续费 / 我的农场账号 / 邀请好友 / 核销记录 / 微信定时刷新重登 -->
+        <div v-else-if="activeTab === 'my-account'" class="space-y-4">
           <!-- 微信定时刷新重登：仅微信账号显示（自源项目移植） -->
           <div v-if="currentAccountIsWx" class="farm-card rounded-lg p-4">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

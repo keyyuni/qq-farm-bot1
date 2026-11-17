@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '@/api'
 import { useToastStore } from '@/stores/toast'
+import { copyTextToClipboard } from '@/utils/clipboard'
 
 interface InviteRecord {
   invitee: string
@@ -66,13 +67,10 @@ async function copyCode() {
   const code = data.value?.code
   if (!code)
     return
-  try {
-    await navigator.clipboard.writeText(code)
+  if (await copyTextToClipboard(code))
     toast.success('邀请码已复制')
-  }
-  catch {
+  else
     toast.warning(`复制失败，请手动记录：${code}`)
-  }
 }
 
 const shareText = computed(() => {
@@ -83,13 +81,10 @@ const shareText = computed(() => {
 })
 
 async function copyShare() {
-  try {
-    await navigator.clipboard.writeText(shareText.value)
+  if (await copyTextToClipboard(shareText.value))
     toast.success('邀请文案已复制，直接发给朋友即可')
-  }
-  catch {
+  else
     toast.warning('复制失败，请手动复制')
-  }
 }
 
 onMounted(load)

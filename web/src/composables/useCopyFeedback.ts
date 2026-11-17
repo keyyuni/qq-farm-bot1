@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
+import { copyTextToClipboard } from '@/utils/clipboard'
 
 /** 复制成功后的对勾反馈在 2.5 秒后自动熄灭；连续复制会重新计时。 */
 export const COPY_FEEDBACK_MS = 2500
@@ -14,7 +15,8 @@ export function useCopyFeedback(duration = COPY_FEEDBACK_MS) {
   }
 
   async function copy(text: string) {
-    await navigator.clipboard.writeText(text)
+    if (!await copyTextToClipboard(text))
+      return
     clearTimeout(timer)
     copied.value = true
     timer = setTimeout(() => {
