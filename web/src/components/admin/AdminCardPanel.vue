@@ -289,7 +289,8 @@ defineExpose({ load })
 
     <!-- 卡密列表 -->
     <div class="farm-card overflow-hidden rounded-2xl bg-white shadow-md dark:bg-gray-800">
-      <div class="custom-scrollbar max-h-[26rem] overflow-auto">
+      <!-- 桌面端：表格 -->
+      <div class="custom-scrollbar hidden max-h-[26rem] overflow-auto md:block">
         <table class="w-full text-left text-sm">
           <thead class="sticky top-0 text-xs text-gray-500 dark:text-gray-400" style="background: var(--surface-2, rgba(127, 127, 127, 0.08));">
             <tr>
@@ -388,6 +389,75 @@ defineExpose({ load })
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 移动端：卡片列表 -->
+      <div class="max-h-[26rem] overflow-auto md:hidden">
+        <div v-if="filteredCards.length === 0" class="px-3 py-8 text-center text-gray-400">
+          暂无卡密
+        </div>
+        <div
+          v-for="(card, idx) in filteredCards"
+          :key="card.code"
+          class="space-y-2 px-3 py-3"
+          :class="idx > 0 ? 'border-t' : ''"
+          :style="idx > 0 ? 'border-color: var(--surface-border, rgba(127, 127, 127, 0.15))' : ''"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <label class="flex min-w-0 items-center gap-2">
+              <input
+                type="checkbox"
+                class="shrink-0 accent-emerald-500"
+                :checked="selected.includes(card.code)"
+                @change="toggleSelect(card.code)"
+              >
+              <span class="truncate text-xs font-mono">{{ card.code }}</span>
+              <button class="icon-btn !h-6 !w-6 shrink-0" title="复制卡密" @click="copyText(card.code)">
+                <span class="i-carbon-copy text-xs" />
+              </button>
+            </label>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" :class="statusClass(card.status)">
+              {{ cardStatusText(card.status) }}
+            </span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span
+              class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+              :class="card.type === 'quota' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'"
+            >
+              {{ card.type === 'quota' ? '额度卡' : '加时卡' }}
+            </span>
+            <span class="text-gray-700 dark:text-gray-300">{{ formatCardValue(card) }}</span>
+            <span v-if="card.description" class="truncate text-gray-500 dark:text-gray-400" :title="card.description">
+              {{ card.description }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="truncate text-xs text-gray-500 dark:text-gray-400">
+              使用者 <span class="text-gray-700 dark:text-gray-300">{{ card.usedBy || '-' }}</span>
+            </span>
+            <div class="flex shrink-0 items-center gap-1">
+              <button
+                v-if="card.status !== 'revoked'"
+                class="icon-btn"
+                title="作废"
+                @click="toggleCard(card, 'revoke')"
+              >
+                <span class="i-carbon-misuse" />
+              </button>
+              <button
+                class="icon-btn"
+                :title="card.enabled ? '禁用' : '启用'"
+                @click="toggleCard(card, card.enabled ? 'disable' : 'enable')"
+              >
+                <span :class="card.enabled ? 'i-carbon-pause' : 'i-carbon-play'" />
+              </button>
+              <button class="icon-btn icon-btn-danger" title="删除" @click="removeCard(card)">
+                <span class="i-carbon-trash-can" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

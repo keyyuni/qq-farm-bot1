@@ -285,7 +285,8 @@ defineExpose({ load })
 
     <!-- 用户列表 -->
     <div class="farm-card overflow-hidden rounded-2xl bg-white shadow-md dark:bg-gray-800">
-      <div class="custom-scrollbar max-h-[28rem] overflow-auto">
+      <!-- 桌面端：表格 -->
+      <div class="custom-scrollbar hidden max-h-[28rem] overflow-auto md:block">
         <table class="w-full text-left text-sm">
           <thead class="sticky top-0 text-xs text-gray-500 dark:text-gray-400" style="background: var(--surface-2, rgba(127, 127, 127, 0.08));">
             <tr>
@@ -386,6 +387,73 @@ defineExpose({ load })
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 移动端：卡片列表 -->
+      <div class="max-h-[28rem] overflow-auto md:hidden">
+        <div v-if="filteredUsers.length === 0" class="px-3 py-8 text-center text-gray-400">
+          暂无用户
+        </div>
+        <div
+          v-for="(user, idx) in filteredUsers"
+          :key="user.username"
+          class="space-y-2 px-3 py-3"
+          :class="idx > 0 ? 'border-t' : ''"
+          :style="idx > 0 ? 'border-color: var(--surface-border, rgba(127, 127, 127, 0.15))' : ''"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-1.5">
+              <span class="truncate text-gray-900 font-medium dark:text-gray-100">{{ user.username }}</span>
+              <span
+                v-if="user.role !== 'user'"
+                class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-white font-medium"
+                :class="user.role === 'super_admin' ? 'bg-purple-500' : 'bg-blue-500'"
+              >超管</span>
+            </div>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" :class="statusBadge(user).cls">
+              {{ statusBadge(user).text }}
+            </span>
+          </div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <div class="text-gray-500 dark:text-gray-400">
+              农场账号 <span class="text-gray-700 dark:text-gray-300">{{ user.accountCount ?? 0 }} 个</span>
+            </div>
+            <div class="text-gray-500 dark:text-gray-400">
+              额度 <span class="text-gray-700 dark:text-gray-300">{{ user.accountLimit < 0 ? '不限' : `${user.accountCount ?? 0} / ${user.accountLimit}` }}</span>
+            </div>
+            <div class="text-gray-500 dark:text-gray-400">
+              注册 <span class="text-gray-700 dark:text-gray-300">{{ formatUserTime(user.createdAt) }}</span>
+            </div>
+            <div class="text-gray-500 dark:text-gray-400">
+              最后登录 <span class="text-gray-700 dark:text-gray-300">{{ user.lastLoginAt ? formatUserTime(user.lastLoginAt) : '从未登录' }}</span>
+            </div>
+            <div class="col-span-2 text-gray-500 dark:text-gray-400">
+              有效期 <span class="text-gray-700 dark:text-gray-300">{{ formatExpiresAt(user.subscription) }}{{ user.subscription?.isPermanent ? '' : `（${formatRemaining(user.remainingMs)}）` }}</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-1 pt-0.5">
+            <button class="icon-btn" title="编辑" @click="openEdit(user)">
+              <span class="i-carbon-edit" />
+            </button>
+            <button class="icon-btn" title="核销卡密" @click="openRenew(user)">
+              <span class="i-carbon-gift" />
+            </button>
+            <button class="icon-btn" title="名下账号" @click="openAccounts(user)">
+              <span class="i-carbon-list" />
+            </button>
+            <button
+              v-if="user.role === 'user'"
+              class="icon-btn"
+              :title="user.subscription?.enabled === false ? '启用' : '禁用'"
+              @click="toggleEnabled(user)"
+            >
+              <span :class="user.subscription?.enabled === false ? 'i-carbon-play' : 'i-carbon-pause'" />
+            </button>
+            <button class="icon-btn icon-btn-danger" title="删除" @click="removeUser(user)">
+              <span class="i-carbon-trash-can" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
