@@ -52,12 +52,16 @@ const statusStore = useStatusStore()
 type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'my-account' | 'admin-panel'
 const storedTab = localStorage.getItem('settings-active-tab')
 const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'my-account', 'admin-panel']
+// 牧场的自动化与养殖策略已移到「牧场策略」页，设置页只保留账号与系统。
+const ranchTabKeys: SettingsTab[] = ['account', 'system']
 const queryTab = String(route.query.tab || '')
 const initialTabRaw = settingsTabKeys.includes(queryTab as SettingsTab)
   ? queryTab as SettingsTab
   : storedTab === 'user' ? 'my-account' : (storedTab as SettingsTab) || 'account'
 // 管理后台仅超级管理员可见：无权限用户恢复到该页签时回落到账号管理
-const initialTab = initialTabRaw === 'admin-panel' && !userStore.isSuperAdmin ? 'account' : initialTabRaw
+const initialTabBase = initialTabRaw === 'admin-panel' && !userStore.isSuperAdmin ? 'account' : initialTabRaw
+// 牧场空间下只显示账号与系统，其余页签回落到账号管理
+const initialTab = inRanch.value && !ranchTabKeys.includes(initialTabBase as SettingsTab) ? 'account' : initialTabBase
 const activeTab = ref<SettingsTab>(initialTab)
 
 watch(activeTab, (newTab) => {
@@ -71,6 +75,8 @@ watch(activeTab, (newTab) => {
 
 watch(() => route.query.tab, (value) => {
   const nextTab = String(value || '')
+  if (inRanch.value && !ranchTabKeys.includes(nextTab as SettingsTab))
+    return
   if (settingsTabKeys.includes(nextTab as SettingsTab) && nextTab !== activeTab.value)
     activeTab.value = nextTab as SettingsTab
 })
@@ -84,9 +90,12 @@ const tabs = [
   { key: 'admin-panel', label: '管理后台', icon: 'i-carbon-user-admin' },
 ] as const
 
-/** 管理后台页签仅超级管理员可见（接口均为对应角色专属） */
+/** 牧场空间下仅显示账号与系统；管理后台页签仅超级管理员可见（接口均为对应角色专属） */
 const visibleTabs = computed(() =>
-  tabs.filter(tab => tab.key !== 'admin-panel' || userStore.isSuperAdmin),
+  tabs.filter(tab =>
+    (!inRanch.value || ranchTabKeys.includes(tab.key as SettingsTab))
+    && (tab.key !== 'admin-panel' || userStore.isSuperAdmin),
+  ),
 )
 
 function setActiveTab(value: string) {
@@ -2403,29 +2412,6 @@ async function handleResetSystemConfig() {
               </BaseButton>
             </div>
           </div>
-        </div>
-
-        <div v-else-if="activeTab === 'strategy' && inRanch" class="space-y-4">
-          <h3 class="text-lg font-bold">
-            养殖策略
-          </h3>
-          <p v-if="settingsLoading">
-            加载中...
-          </p>
-          <p v-else-if="!currentAccountId || loadedAccountId !== currentAccountId">
-            请先选择并加载账号
-          </p>
-          <AutomationSettingsForm
-            v-else
-            v-model="localAutomationSettings"
-            in-ranch
-            panel="strategy"
-            :ranch-animal-options="ranchAnimalOptions"
-            :saving="automationSaving"
-            :fertilizer-land-type-options="fertilizerLandTypeOptions"
-            :fertilizer-options="fertilizerOptions"
-            @save="saveAutomationSettings"
-          />
         </div>
 
         <!-- 自动控制 -->
