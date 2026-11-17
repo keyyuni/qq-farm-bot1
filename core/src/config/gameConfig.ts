@@ -497,17 +497,33 @@ function getPlantImageByPhase(plantId: number | string, phase: number | string):
     }
     const plant = plantMap.get(Number(plantId) || 0);
     if (!plant) return '';
+    const numericPhase = Number(phase) || 1;
     const seedId = Number((plant as any).seed_id) || 0;
-    const itemInfo = itemInfoMap.get(seedId);
-    const assetName = String(
-        (plant as any).asset_name
-        || (itemInfo && itemInfo.asset_name)
-        || (seedId > 20000 ? `Crop_${seedId - 20000}` : `Plant_${plant.id}`)
-    ).trim();
-    if (!assetName) return '';
-    const phases = plantPhaseImageMap.get(assetName);
-    if (!phases) return '';
-    return phases[String(Number(phase) || 1)] || '';
+    const seedItem = itemInfoMap.get(seedId);
+    const fruitId = Number((plant as any).fruit && (plant as any).fruit.id) || 0;
+    const fruitItem = fruitId ? itemInfoMap.get(fruitId) : undefined;
+
+    // 收集可能的模型名候选，逐个尝试直到找到导出图。
+    // 部分作物（尤其黄金/活动作物）的一份 asset_name 可能没有导出图，
+    // 但另一份推导（如从 seedId/fruitId 推导 Crop_xxx）能命中；
+    // 不能只取第一个非空 asset_name，否则会误盖掉可用的回退。
+    const candidates: string[] = [];
+    const pushCandidate = (value: unknown): void => {
+        const name = String(value || '').trim();
+        if (name && !candidates.includes(name)) candidates.push(name);
+    };
+    pushCandidate((plant as any).asset_name);
+    pushCandidate(seedItem && seedItem.asset_name);
+    pushCandidate(fruitItem && fruitItem.asset_name);
+    if (seedId > 20000) pushCandidate(`Crop_${seedId - 20000}`);
+    pushCandidate(`Plant_${plant.id}`);
+
+    for (const assetName of candidates) {
+        const phases = plantPhaseImageMap.get(assetName);
+        const url = phases && phases[String(numericPhase)];
+        if (url) return url;
+    }
+    return '';
 }
 
 /** 获取变异作物阶段图，缺少专属导出图时回退到原作物。 */
