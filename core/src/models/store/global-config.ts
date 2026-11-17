@@ -69,6 +69,8 @@ function normalizeOfflineReminder(input: unknown): OfflineReminder {
     const emailContent = (src.emailContent !== undefined && src.emailContent !== null)
         ? String(src.emailContent).trim()
         : DEFAULT_OFFLINE_REMINDER.emailContent;
+    // 使用管理员全局邮件服务（只有 SMTP 渠道才有意义）
+    const useGlobalMailer = src.useGlobalMailer === true || src.useGlobalMailer === 'true';
     return {
         channel,
         endpoint,
@@ -84,6 +86,7 @@ function normalizeOfflineReminder(input: unknown): OfflineReminder {
         senderName,
         recipientEmail,
         emailContent,
+        useGlobalMailer,
     };
 }
 
@@ -109,8 +112,17 @@ function setUITheme(theme: unknown): UIConfig {
     return getUI();
 }
 
-function getOfflineReminder(): OfflineReminder {
-    return normalizeOfflineReminder(globalConfig.offlineReminder);
+function getOfflineReminder(username?: unknown): OfflineReminder {
+    const name = String(username || '').trim();
+    if (!name) {
+        return normalizeOfflineReminder(globalConfig.offlineReminder);
+    }
+    // 按登录用户隔离：优先读用户自己的配置，没有则返回默认值
+    const userReminder = globalConfig.userOfflineReminders && globalConfig.userOfflineReminders[name];
+    if (userReminder) {
+        return normalizeOfflineReminder(userReminder);
+    }
+    return normalizeOfflineReminder({});
 }
 
 function normalizeLoginSettings(input: unknown): LoginSettings {
@@ -136,11 +148,24 @@ function setLoginSettings(cfg: Partial<LoginSettings> | undefined): LoginSetting
     return getLoginSettings();
 }
 
-function setOfflineReminder(cfg: Partial<OfflineReminder> | undefined): OfflineReminder {
-    const current = normalizeOfflineReminder(globalConfig.offlineReminder);
+function setOfflineReminder(cfg: Partial<OfflineReminder> | undefined, username?: unknown): OfflineReminder {
+    const name = String(username || '').trim();
+    if (!name) {
+        // 未指定用户：写入全局配置（兼容旧行为/兜底）
+        const current = normalizeOfflineReminder(globalConfig.offlineReminder);
+        const next = normalizeOfflineReminder({ ...current, ...(cfg || {}) });
+        saveGlobalConfig({ offlineReminder: next });
+        return getOfflineReminder();
+    }
+    // 指定用户：写入该用户自己的配置，互不影响
+    if (!globalConfig.userOfflineReminders) {
+        globalConfig.userOfflineReminders = {};
+    }
+    const current = normalizeOfflineReminder(globalConfig.userOfflineReminders[name] || {});
     const next = normalizeOfflineReminder({ ...current, ...(cfg || {}) });
-    saveGlobalConfig({ offlineReminder: next });
-    return getOfflineReminder();
+    globalConfig.userOfflineReminders[name] = next;
+    saveGlobalConfig({ userOfflineReminders: { ...globalConfig.userOfflineReminders } });
+    return getOfflineReminder(name);
 }
 
 function getUsersSeeAllAccounts(): boolean {

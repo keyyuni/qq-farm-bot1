@@ -123,6 +123,8 @@ export interface OfflineReminder {
   senderName: string;
   recipientEmail: string;
   emailContent: string;
+  /** SMTP 渠道专用：使用管理员配置的全局邮件服务（免填 SMTP 账号密码） */
+  useGlobalMailer: boolean;
 }
 
 export interface UIConfig {
@@ -164,6 +166,8 @@ export interface GlobalConfig {
   ui: UIConfig;
   loginSettings: LoginSettings;
   offlineReminder: OfflineReminder;
+  /** 按登录用户隔离的下线提醒配置（普通用户在「通知设置」里保存自己的配置） */
+  userOfflineReminders: Record<string, OfflineReminder>;
   systemConfig: SystemConfig | null;
   /** 普通用户是否可见全部农场账号（默认关闭：仅可见自己添加的账号） */
   usersSeeAllAccounts: boolean;

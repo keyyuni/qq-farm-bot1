@@ -9,6 +9,7 @@ export {};
  */
 const featuresStore = require('../../models/user-features-store');
 const userStore = require('../../models/user-store');
+const store = require('../../models/store');
 const { sendSmtpEmail } = require('../../services/smtp-mailer');
 const { createRequireAdminRole } = require('./middleware');
 
@@ -112,6 +113,11 @@ function mountAdminMailerRoutes(app: Application, ctx: any): void {
         try {
             const users = userStore.listUsersForAdmin({});
             const data = (Array.isArray(users) ? users : []).map((user: any) => {
+                // 收件邮箱优先取用户「通知设置」里的收件邮箱，其次取用户资料 email
+                const reminder = (typeof store.getOfflineReminder === 'function')
+                    ? store.getOfflineReminder(user.username) || {}
+                    : {};
+                const reminderEmail = normalizeEmail(reminder.recipientEmail);
                 const profileEmail = normalizeEmail(user.email);
                 return {
                     username: user.username,
@@ -119,8 +125,8 @@ function mountAdminMailerRoutes(app: Application, ctx: any): void {
                     nick: user.nick || '',
                     isExpired: user.isExpired === true,
                     expiresAtText: user.expiresAtText || '',
-                    email: profileEmail,
-                    emailSource: profileEmail ? 'profile' : '',
+                    email: reminderEmail || profileEmail,
+                    emailSource: reminderEmail ? 'reminder' : (profileEmail ? 'profile' : ''),
                 };
             });
             res.json({ ok: true, data });
@@ -141,7 +147,7 @@ function mountAdminMailerRoutes(app: Application, ctx: any): void {
 
             const config = featuresStore.getGlobalMailer();
             if (!config.ready) {
-                return res.status(400).json({ ok: false, error: '请先在「邮件通知」里配置并启用邮件服务' });
+                return res.status(400).json({ ok: false, error: '请先在「全局设置」里配置并启用邮件服务' });
             }
 
             const users = userStore.listUsersForAdmin({});
@@ -179,7 +185,11 @@ function mountAdminMailerRoutes(app: Application, ctx: any): void {
                     skipped.push({ username: user.username, reason: '已过期（未勾选包含过期用户）' });
                     continue;
                 }
-                const email = normalizeEmail(user.email);
+                // 收件邮箱优先取用户「通知设置」里的收件邮箱，其次取用户资料 email
+                const reminder = (typeof store.getOfflineReminder === 'function')
+                    ? store.getOfflineReminder(user.username) || {}
+                    : {};
+                const email = normalizeEmail(reminder.recipientEmail) || normalizeEmail(user.email);
                 if (!email) {
                     skipped.push({ username: user.username, reason: '未填写收件邮箱' });
                     continue;

@@ -22,6 +22,7 @@ const {
     createRequireAdminRole,
 } = require('./middleware');
 const userStore = require('../../models/user-store');
+const featuresStore = require('../../models/user-features-store');
 const inviteRewards = require('../../services/invite-rewards');
 const { isSuperAdminRole } = require('../../config/user-system');
 
@@ -388,11 +389,11 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 保存下线提醒配置（全局推送配置，仅超级管理员）
+    // API: 保存下线提醒配置（按登录用户隔离存储；所有登录用户可保存自己的配置）
     app.post('/api/settings/offline-reminder', async (req: Request, res: Response) => {
         const reminderUser = (req as AuthenticatedRequest).currentUser || null;
-        if (!reminderUser || !isSuperAdminRole(reminderUser.role)) {
-            return res.status(403).json({ ok: false, error: '仅超级管理员可修改下线提醒配置' });
+        if (!reminderUser) {
+            return res.status(401).json({ ok: false, error: '未登录' });
         }
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -405,21 +406,21 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     return res.status(400).json({ ok: false, error: error?.message || '钉钉 Webhook 地址格式无效' });
                 }
             }
-            const data = store.setOfflineReminder ? store.setOfflineReminder(body) : {};
+            const data = store.setOfflineReminder ? store.setOfflineReminder(body, reminderUser.username) : {};
             res.json({ ok: true, data: data || {} });
         } catch (e: any) {
             handleApiError(res, e);
         }
     });
 
-    // API: 测试下线提醒推送（不落盘；服务器会向配置地址发起请求，仅超级管理员）
+    // API: 测试下线提醒推送（不落盘；所有登录用户可测试自己的配置，合并已保存内容）
     app.post('/api/settings/offline-reminder/test', async (req: Request, res: Response) => {
         const testUser = (req as AuthenticatedRequest).currentUser || null;
-        if (!testUser || !isSuperAdminRole(testUser.role)) {
-            return res.status(403).json({ ok: false, error: '仅超级管理员可测试下线提醒推送' });
+        if (!testUser) {
+            return res.status(401).json({ ok: false, error: '未登录' });
         }
         try {
-            const saved = store.getOfflineReminder ? store.getOfflineReminder() : {};
+            const saved = store.getOfflineReminder ? store.getOfflineReminder(testUser.username) : {};
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const cfg = { ...(saved || {}), ...body };
 
@@ -434,15 +435,32 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                 return res.status(400).json({ ok: false, error: '推送渠道不能为空' });
             }
 
-            // SMTP 邮件渠道：校验并直接发测试邮件
+            // SMTP 邮件渠道：勾选「使用管理员配置的邮件服务」时复用全局 SMTP
             if (channel === 'smtp') {
-                if (!String(cfg.smtpHost || '').trim()) {
+                let smtpHost = String(cfg.smtpHost || '').trim();
+                let smtpUser = String(cfg.smtpUser || '').trim();
+                let smtpPass = String(cfg.smtpPass || '').trim();
+                let senderName = String(cfg.senderName || '').trim();
+                let smtpPort = Number(cfg.smtpPort) || 465;
+                const useGlobalMailer = cfg.useGlobalMailer === true;
+                if (useGlobalMailer) {
+                    const globalMailer = featuresStore.getGlobalMailer();
+                    if (!globalMailer || globalMailer.ready !== true) {
+                        return res.status(400).json({ ok: false, error: '管理员尚未配置好后台邮件服务，请先联系管理员或在下方自行填写 SMTP' });
+                    }
+                    smtpHost = globalMailer.smtpHost;
+                    smtpPort = globalMailer.smtpPort;
+                    smtpUser = globalMailer.smtpUser;
+                    smtpPass = globalMailer.smtpPass;
+                    senderName = globalMailer.senderName || senderName;
+                }
+                if (!smtpHost) {
                     return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写服务器地址' });
                 }
-                if (!String(cfg.smtpUser || '').trim()) {
+                if (!smtpUser) {
                     return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写邮箱账号' });
                 }
-                if (!String(cfg.smtpPass || '').trim()) {
+                if (!smtpPass) {
                     return res.status(400).json({ ok: false, error: 'SMTP 渠道需要填写授权码' });
                 }
                 if (!String(cfg.recipientEmail || '').trim()) {
@@ -450,14 +468,16 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                 }
                 const { sendSmtpEmail } = require('../../services/push');
                 const ret = await sendSmtpEmail({
-                    smtpHost: cfg.smtpHost,
-                    smtpPort: cfg.smtpPort,
-                    smtpUser: cfg.smtpUser,
-                    smtpPass: cfg.smtpPass,
-                    senderName: cfg.senderName,
+                    smtpHost,
+                    smtpPort,
+                    smtpUser,
+                    smtpPass,
+                    senderName,
                     recipientEmail: cfg.recipientEmail,
                     subject: `${titleBase}（测试）`,
-                    content: `${msgBase}\n\n这是一条下线提醒测试邮件。\n时间: ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`,
+                    content: useGlobalMailer
+                        ? '这是一封测试邮件，收到它说明后台全局邮件服务配置成功！'
+                        : `${msgBase}\n\n这是一条下线提醒测试邮件。\n时间: ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`,
                 });
                 if (!ret?.ok) {
                     return res.status(400).json({ ok: false, error: ret?.msg || '测试邮件发送失败', data: ret });
@@ -535,15 +555,30 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const autoAcceptHarvestStealSteal = id && (typeof store.getAutoAcceptHarvestStealSteal === 'function') ? store.getAutoAcceptHarvestStealSteal(id) : 1;
             const autoCodeRefresh = id && (typeof store.getAutoCodeRefresh === 'function') ? store.getAutoCodeRefresh(id) : { enabled: false, intervalMinutes: 60 };
             const ui = store.getUI();
-            let offlineReminder = store.getOfflineReminder
-                ? store.getOfflineReminder()
-                : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
-            // 用户隔离：全局推送凭据（token/secret/smtp）仅超级管理员可见
+            // 下线提醒按登录用户隔离：返回当前用户自己的配置（未配置时返回默认值）
             const settingsUser = (req as AuthenticatedRequest).currentUser || null;
-            if (!settingsUser || !isSuperAdminRole(settingsUser.role)) {
-                offlineReminder = { ...offlineReminder, endpoint: '', token: '', secret: '', smtpHost: '', smtpUser: '', smtpPass: '', senderName: '', recipientEmail: '' };
-            }
-            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, autoCodeRefresh, ui, offlineReminder } });
+            let offlineReminder = store.getOfflineReminder
+                ? store.getOfflineReminder(settingsUser ? settingsUser.username : '')
+                : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
+            // 管理员是否配置好全局邮件服务（用户在通知设置里可勾选复用，免填 SMTP）
+            const globalMailer = typeof featuresStore.getGlobalMailerPublic === 'function'
+                ? featuresStore.getGlobalMailerPublic()
+                : { available: false, senderName: '' };
+            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, autoCodeRefresh, ui, offlineReminder, globalMailer } });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 管理员全局邮件服务公开状态（与账号无关，通知设置页未选账号时也能判断开关可用性）
+    app.get('/api/settings/mailer', (_req: Request, res: Response) => {
+        try {
+            res.json({
+                ok: true,
+                data: typeof featuresStore.getGlobalMailerPublic === 'function'
+                    ? featuresStore.getGlobalMailerPublic()
+                    : { available: false, senderName: '' },
+            });
         } catch (e: any) {
             handleApiError(res, e);
         }

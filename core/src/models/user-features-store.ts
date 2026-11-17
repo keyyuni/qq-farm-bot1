@@ -113,6 +113,15 @@ function getGlobalMailer(): any {
     return { ...cfg, ready: isGlobalMailerReady(cfg) };
 }
 
+/** 给普通用户看的全局邮件服务状态（不暴露账号密码） */
+function getGlobalMailerPublic(): { available: boolean, senderName: string } {
+    const cfg = loadMailer();
+    return {
+        available: isGlobalMailerReady(cfg),
+        senderName: cfg.senderName || '',
+    };
+}
+
 function setGlobalMailer(patch: any = {}): any {
     const current = loadMailer();
     const merged = { ...current, ...(patch && typeof patch === 'object' ? patch : {}) };
@@ -133,5 +142,6 @@ module.exports = {
     markAnnouncementRead,
     shouldShowAnnouncement,
     getGlobalMailer,
+    getGlobalMailerPublic,
     setGlobalMailer,
 };

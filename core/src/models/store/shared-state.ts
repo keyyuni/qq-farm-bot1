@@ -46,6 +46,7 @@ const DEFAULT_OFFLINE_REMINDER: OfflineReminder = {
     senderName: '',
     recipientEmail: '',
     emailContent: '',
+    useGlobalMailer: false,
 };
 
 const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
@@ -539,6 +540,7 @@ const globalConfig: GlobalConfig = {
     },
     loginSettings: { ...DEFAULT_LOGIN_SETTINGS },
     offlineReminder: { ...DEFAULT_OFFLINE_REMINDER },
+    userOfflineReminders: {},
     systemConfig: null,
     usersSeeAllAccounts: false,
 };
@@ -574,6 +576,11 @@ function loadGlobalConfig(): void {
             // offlineReminder normalization done in global-config
             if (data.offlineReminder && typeof data.offlineReminder === 'object') {
                 globalConfig.offlineReminder = data.offlineReminder;
+            }
+
+            // 按登录用户隔离的下线提醒配置（普通用户「通知设置」保存到这里）
+            if (data.userOfflineReminders && typeof data.userOfflineReminders === 'object') {
+                globalConfig.userOfflineReminders = data.userOfflineReminders;
             }
 
             // 账号可见性开关（默认关闭）
