@@ -214,6 +214,17 @@ function toggleSelect(code: string) {
   else selected.value.splice(index, 1)
 }
 
+const allSelected = computed(() =>
+  filteredCards.value.length > 0 && filteredCards.value.every(card => selected.value.includes(card.code)),
+)
+
+function toggleSelectAll() {
+  if (allSelected.value)
+    selected.value = []
+  else
+    selected.value = filteredCards.value.map(card => card.code)
+}
+
 function statusClass(status: string) {
   if (status === 'used')
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
@@ -275,7 +286,15 @@ defineExpose({ load })
         生成卡密
       </button>
       <button
-        class="flex items-center gap-1.5 rounded-xl border border-red-300 px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+        class="btn-ghost"
+        :class="{ 'text-emerald-600': selected.length > 0 }"
+        @click="toggleSelectAll"
+      >
+        <span :class="allSelected ? 'i-carbon-subtract' : 'i-carbon-checkmark'" />
+        {{ allSelected ? '取消全选' : '全选' }}
+      </button>
+      <button
+        class="flex items-center gap-1.5 border border-red-300 rounded-xl px-3 py-2 text-sm text-red-600 transition dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
         @click="removeSelected"
       >
         <span class="i-carbon-trash-can" />
@@ -288,7 +307,7 @@ defineExpose({ load })
     </div>
 
     <!-- 卡密列表 -->
-    <div class="farm-card overflow-hidden rounded-2xl bg-white shadow-md dark:bg-gray-800">
+    <div class="overflow-hidden farm-card rounded-2xl bg-white shadow-md dark:bg-gray-800">
       <!-- 桌面端：表格 -->
       <div class="custom-scrollbar hidden max-h-[26rem] overflow-auto md:block">
         <table class="w-full text-left text-sm">
@@ -399,12 +418,12 @@ defineExpose({ load })
         <div
           v-for="(card, idx) in filteredCards"
           :key="card.code"
-          class="space-y-2 px-3 py-3"
+          class="px-3 py-3 space-y-2"
           :class="idx > 0 ? 'border-t' : ''"
           :style="idx > 0 ? 'border-color: var(--surface-border, rgba(127, 127, 127, 0.15))' : ''"
         >
           <div class="flex items-center justify-between gap-2">
-            <label class="flex min-w-0 items-center gap-2">
+            <label class="min-w-0 flex items-center gap-2">
               <input
                 type="checkbox"
                 class="shrink-0 accent-emerald-500"
@@ -412,7 +431,7 @@ defineExpose({ load })
                 @change="toggleSelect(card.code)"
               >
               <span class="truncate text-xs font-mono">{{ card.code }}</span>
-              <button class="icon-btn !h-6 !w-6 shrink-0" title="复制卡密" @click="copyText(card.code)">
+              <button class="icon-btn shrink-0 !h-6 !w-6" title="复制卡密" @click="copyText(card.code)">
                 <span class="i-carbon-copy text-xs" />
               </button>
             </label>
@@ -468,7 +487,7 @@ defineExpose({ load })
         class="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 p-4 backdrop-blur-md"
         @click.self="closeCreateModal"
       >
-        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-800">
+        <div class="max-h-[90vh] max-w-lg w-full overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-800">
           <div class="mb-4 flex items-center justify-between">
             <h3 class="flex items-center gap-2 text-base text-gray-900 font-semibold dark:text-gray-100">
               <span class="i-carbon-add-alt" />
@@ -551,7 +570,7 @@ defineExpose({ load })
             </button>
           </div>
 
-          <div v-if="lastBatch.length" class="mt-4 rounded-xl border p-3" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+          <div v-if="lastBatch.length" class="mt-4 border rounded-xl p-3" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
             <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs text-gray-500">本次生成 {{ lastBatch.length }} 张</span>
               <div class="flex items-center gap-3">

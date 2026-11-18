@@ -319,6 +319,19 @@ const filteredOperations = computed(() => {
   return result
 })
 
+const OPS_COLLAPSED_COUNT = 8
+
+const showAllOperations = ref(false)
+
+const visibleOperations = computed(() => {
+  const entries = Object.entries(filteredOperations.value)
+  if (showAllOperations.value || entries.length <= OPS_COLLAPSED_COUNT)
+    return Object.fromEntries(entries)
+  return Object.fromEntries(entries.slice(0, OPS_COLLAPSED_COUNT))
+})
+
+const hasMoreOperations = computed(() => Object.keys(filteredOperations.value).length > OPS_COLLAPSED_COUNT)
+
 function getOpName(key: string | number) {
   return OP_META[String(key)]?.label || String(key)
 }
@@ -716,7 +729,7 @@ useIntervalFn(updateCountdowns, 1000)
       </div>
 
       <!-- Right Column Stack -->
-      <div class="order-1 flex min-w-0 flex-col gap-6 md:order-2 md:w-1/4 md:self-start">
+      <div class="order-1 min-w-0 flex flex-col gap-6 md:order-2 md:w-1/4 md:self-start">
         <!-- Next Checks -->
         <div class="flex flex-col farm-card rounded-2xl bg-white p-6 shadow-md dark:bg-gray-800">
           <h3 class="mb-4 flex items-center gap-2 text-lg font-display font-medium">
@@ -746,8 +759,18 @@ useIntervalFn(updateCountdowns, 1000)
 
         <!-- Operations Grid -->
         <div class="farm-card rounded-2xl bg-white p-5 shadow-md dark:bg-gray-800">
-          <h3 class="mb-3 flex items-center gap-2 text-lg font-display font-medium">
-            <span class="i-carbon-chart-column" /> <span>今日统计</span>
+          <h3 class="mb-3 flex items-center justify-between gap-2 text-lg font-display font-medium">
+            <span class="flex items-center gap-2">
+              <span class="i-carbon-chart-column" /> <span>今日统计</span>
+            </span>
+            <button
+              v-if="hasMoreOperations"
+              class="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/40"
+              @click="showAllOperations = !showAllOperations"
+            >
+              {{ showAllOperations ? '收起' : '展开全部' }}
+              <span class="text-sm" :class="showAllOperations ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
+            </button>
           </h3>
           <EmptyState
             v-if="!status?.connection?.connected"
@@ -758,7 +781,7 @@ useIntervalFn(updateCountdowns, 1000)
           />
           <div v-else class="grid grid-cols-2 gap-2 2xl:gap-3">
             <div
-              v-for="(val, key) in filteredOperations"
+              v-for="(val, key) in visibleOperations"
               :key="key"
               class="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 transition-transform hover:scale-105 dark:bg-gray-700/30"
             >

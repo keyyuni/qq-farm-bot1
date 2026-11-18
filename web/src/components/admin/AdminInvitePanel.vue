@@ -205,7 +205,7 @@ onMounted(load)
         数据
       </h3>
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div class="rounded-lg border py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+        <div class="border rounded-lg py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
           <div class="text-lg text-gray-900 font-semibold dark:text-gray-100">
             {{ data.stats.total }}
           </div>
@@ -213,7 +213,7 @@ onMounted(load)
             总记录
           </div>
         </div>
-        <div class="rounded-lg border py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+        <div class="border rounded-lg py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
           <div class="text-lg text-emerald-600 font-semibold">
             {{ data.stats.granted }}
           </div>
@@ -221,7 +221,7 @@ onMounted(load)
             已结算
           </div>
         </div>
-        <div class="rounded-lg border py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+        <div class="border rounded-lg py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
           <div class="text-lg text-amber-600 font-semibold">
             {{ data.stats.pending }}
           </div>
@@ -229,7 +229,7 @@ onMounted(load)
             待绑定
           </div>
         </div>
-        <div class="rounded-lg border py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+        <div class="border rounded-lg py-2 text-center" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
           <div class="text-lg text-rose-600 font-semibold">
             {{ data.stats.rejected }}
           </div>
@@ -254,7 +254,7 @@ onMounted(load)
       </div>
     </div>
 
-    <div v-if="data" class="farm-card overflow-hidden rounded-2xl bg-white shadow-md dark:bg-gray-800">
+    <div v-if="data" class="overflow-hidden farm-card rounded-2xl bg-white shadow-md dark:bg-gray-800">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
         <h3 class="text-sm text-gray-900 font-semibold dark:text-gray-100">
           邀请明细
@@ -276,72 +276,116 @@ onMounted(load)
         暂无记录
       </div>
 
-      <table v-else class="w-full text-left text-sm">
-        <thead class="text-xs text-gray-500" style="background: var(--surface-2, rgba(127, 127, 127, 0.08));">
-          <tr>
-            <th class="px-4 py-2 font-medium">
-              时间
-            </th>
-            <th class="px-4 py-2 font-medium">
-              邀请人
-            </th>
-            <th class="px-4 py-2 font-medium">
-              新账号
-            </th>
-            <th class="px-4 py-2 font-medium">
-              状态
-            </th>
-            <th class="px-4 py-2 font-medium">
-              奖励
-            </th>
-            <th class="px-4 py-2 font-medium">
-              IP
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in shownRecords" :key="item.id" class="border-t" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
-            <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-500">
-              {{ formatEpochMinute(item.at) }}
-            </td>
-            <td class="px-4 py-2">
-              {{ item.inviter || '-' }}
-            </td>
-            <td class="px-4 py-2">
-              {{ item.invitee }}
-            </td>
-            <td class="px-4 py-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-[11px]"
-                :class="item.status === 'granted'
-                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30'
-                  : item.status === 'pending'
-                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/30'
-                    : 'bg-rose-50 text-rose-600 dark:bg-rose-900/30'"
-              >
-                {{ statusText[item.status] || item.status }}
-              </span>
-              <span v-if="item.reason && item.status === 'rejected'" class="ml-1 text-[11px] text-gray-400">
-                {{ reasonText[item.reason] || item.reason }}
-              </span>
-            </td>
-            <td class="px-4 py-2 text-xs">
-              <template v-if="item.status === 'granted'">
-                +{{ item.inviterDays }} 天
-              </template>
-              <template v-else-if="item.status === 'pending'">
-                待结 {{ item.pendingDays }} 天
-              </template>
-              <template v-else>
-                -
-              </template>
-            </td>
-            <td class="px-4 py-2 text-xs text-gray-400">
-              {{ item.ip || '-' }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <!-- 移动端：卡片式布局 -->
+      <div v-else-if="shownRecords.length > 0" class="px-4 py-3 md:hidden space-y-2">
+        <div
+          v-for="item in shownRecords"
+          :key="item.id"
+          class="border rounded-xl p-3"
+          style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex items-center gap-1.5 text-sm">
+              <span class="truncate text-gray-900 font-medium dark:text-gray-100">{{ item.inviter || '-' }}</span>
+              <span class="i-carbon-arrow-right flex-none text-xs text-gray-400" />
+              <span class="truncate text-gray-600 dark:text-gray-300">{{ item.invitee }}</span>
+            </div>
+            <span
+              class="flex-none whitespace-nowrap rounded-full px-2 py-0.5 text-[11px]"
+              :class="item.status === 'granted'
+                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30'
+                : item.status === 'pending'
+                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/30'
+                  : 'bg-rose-50 text-rose-600 dark:bg-rose-900/30'"
+            >
+              {{ statusText[item.status] || item.status }}
+            </span>
+          </div>
+          <div v-if="item.reason && item.status === 'rejected'" class="mt-1 text-[11px] text-gray-400">
+            {{ reasonText[item.reason] || item.reason }}
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+            <span>{{ formatEpochMinute(item.at) }}</span>
+            <span v-if="item.status === 'granted'" class="text-emerald-600">
+              奖励 +{{ item.inviterDays }} 天
+            </span>
+            <span v-else-if="item.status === 'pending'" class="text-amber-600">
+              待结 {{ item.pendingDays }} 天
+            </span>
+            <span class="text-gray-400">IP {{ item.ip || '-' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="hidden md:block">
+        <!-- 桌面端：表格 -->
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs text-gray-500" style="background: var(--surface-2, rgba(127, 127, 127, 0.08));">
+            <tr>
+              <th class="px-4 py-2 font-medium">
+                时间
+              </th>
+              <th class="px-4 py-2 font-medium">
+                邀请人
+              </th>
+              <th class="px-4 py-2 font-medium">
+                新账号
+              </th>
+              <th class="px-4 py-2 font-medium">
+                状态
+              </th>
+              <th class="px-4 py-2 font-medium">
+                奖励
+              </th>
+              <th class="px-4 py-2 font-medium">
+                IP
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in shownRecords" :key="item.id" class="border-t" style="border-color: var(--surface-border, rgba(127, 127, 127, 0.15));">
+              <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-500">
+                {{ formatEpochMinute(item.at) }}
+              </td>
+              <td class="px-4 py-2">
+                {{ item.inviter || '-' }}
+              </td>
+              <td class="px-4 py-2">
+                {{ item.invitee }}
+              </td>
+              <td class="px-4 py-2">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[11px]"
+                  :class="item.status === 'granted'
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30'
+                    : item.status === 'pending'
+                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/30'
+                      : 'bg-rose-50 text-rose-600 dark:bg-rose-900/30'"
+                >
+                  {{ statusText[item.status] || item.status }}
+                </span>
+                <span v-if="item.reason && item.status === 'rejected'" class="ml-1 text-[11px] text-gray-400">
+                  {{ reasonText[item.reason] || item.reason }}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-xs">
+                <template v-if="item.status === 'granted'">
+                  +{{ item.inviterDays }} 天
+                </template>
+                <template v-else-if="item.status === 'pending'">
+                  待结 {{ item.pendingDays }} 天
+                </template>
+                <template v-else>
+                  -
+                </template>
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-400">
+                {{ item.ip || '-' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 </template>
