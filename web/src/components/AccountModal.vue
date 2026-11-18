@@ -40,6 +40,8 @@ let wxFlowVersion = 0
 let wxPollController: AbortController | undefined
 let wxPollInFlight: Promise<void> | undefined
 let wxPollKey = ''
+// 移动端切后台回前台时网络恢复较慢，网络类错误自动重试而非直接卡死报错
+let wxPollRetries = 0
 let wxPendingCode = ''
 // 微信扫码登录的可再生凭证（loginBuffer/refreshtoken），随账号保存后支持定时刷新 Code 与自动重登
 let wxPendingCredentials: { wxid?: string, loginBuffer?: string, refreshtoken?: string, accesstoken?: string } | null = null
@@ -53,7 +55,19 @@ let qqFlowVersion = 0
 let qqPollController: AbortController | undefined
 let qqPollInFlight: Promise<void> | undefined
 let qqPollKey = ''
+let qqPollRetries = 0
 let qqPendingCode = ''
+const POLL_NETWORK_RETRY_MAX = 8
+const POLL_NETWORK_RETRY_DELAY_MS = 2000
+
+/** 判断是否为可自动重试的网络类错误（超时/断网），移动端回前台瞬间常见 */
+function isNetworkLikeError(error: any): boolean {
+  const code = String(error?.code || '')
+  if (code === 'ECONNABORTED' || code === 'ERR_NETWORK' || code === 'ERR_BAD_RESPONSE')
+    return true
+  const message = String(error?.message || '')
+  return /timeout|network|Network Error/i.test(message)
+}
 let qrNameSubmitTimer: ReturnType<typeof setTimeout> | undefined
 
 // —— 抓包登录（自 qq-farm-bot 移植）——
@@ -481,6 +495,7 @@ function resetWxLogin() {
   const oldTaskId = wxTaskId.value
   wxFlowVersion += 1
   stopWxPolling()
+  wxPollRetries = 0
   if (oldTaskId) {
     void api.delete(`/api/wx-login/tasks/${oldTaskId}`, { skipErrorToast: true } as any).catch(() => undefined)
   }
@@ -505,7 +520,7 @@ function isWxFlowActive(taskId: string, flowVersion: number) {
 async function getWxCodeAndAdd(taskId: string, flowVersion: number) {
   if (!isWxFlowActive(taskId, flowVersion))
     return
-  const codeResult = await api.post(`/api/wx-login/tasks/${taskId}/code`)
+  const codeResult = await api.post(`/api/wx-login/tasks/${taskId}/code`, undefined, { timeout: 60000, skipErrorToast: true } as any)
   if (!isWxFlowActive(taskId, flowVersion))
     return
   const code = String(codeResult.data?.data?.code || '').trim()
@@ -526,7 +541,8 @@ async function confirmWxLogin(taskId: string, flowVersion: number) {
   if (!isWxFlowActive(taskId, flowVersion))
     return
   wxStatus.value = '正在建立登录会话...'
-  await api.post(`/api/wx-login/tasks/${taskId}/confirm`)
+  // 移动端切后台回前台后网络恢复较慢，加长超时避免 10s 默认值误报
+  await api.post(`/api/wx-login/tasks/${taskId}/confirm`, undefined, { timeout: 30000, skipErrorToast: true } as any)
   if (!isWxFlowActive(taskId, flowVersion))
     return
   await getWxCodeAndAdd(taskId, flowVersion)
@@ -546,6 +562,7 @@ async function pollWxLoginRequest(taskId: string, flowVersion: number) {
     } as any))
     if (!isWxFlowActive(taskId, flowVersion))
       return
+    wxPollRetries = 0
     const status = response.data?.data?.status
     if (status === 'waiting') {
       wxStatus.value = '等待微信扫码'
@@ -567,6 +584,14 @@ async function pollWxLoginRequest(taskId: string, flowVersion: number) {
   catch (error: any) {
     if (!isWxFlowActive(taskId, flowVersion) || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED')
       return
+    // 网络类错误（超时/断网）自动重试：移动端切后台回前台网络恢复较慢
+    if (isNetworkLikeError(error) && wxPollRetries < POLL_NETWORK_RETRY_MAX) {
+      wxPollRetries += 1
+      wxStatus.value = `网络波动，正在重试（${wxPollRetries}/${POLL_NETWORK_RETRY_MAX}）…`
+      wxError.value = ''
+      wxPollTimer = setTimeout(() => void pollWxLogin(taskId, flowVersion), POLL_NETWORK_RETRY_DELAY_MS)
+      return
+    }
     wxError.value = getApiErrorMessage(error, '登录状态检查失败')
   }
   finally {
@@ -662,6 +687,7 @@ function resetQqLogin() {
   qqQrUrl.value = ''
   qqLoading.value = false
   qqPendingCode = ''
+  qqPollRetries = 0
   clearQrNameSubmitTimer()
 }
 
@@ -729,6 +755,7 @@ async function pollQqLoginRequest(taskId: string, flowVersion: number) {
     } as any)
     if (!isQqFlowActive(taskId, flowVersion))
       return
+    qqPollRetries = 0
 
     const payload = ensureQqApiOk(response, 'QQ 登录状态检查失败')
     const task = payload?.data
@@ -763,6 +790,14 @@ async function pollQqLoginRequest(taskId: string, flowVersion: number) {
   catch (error: any) {
     if (!isQqFlowActive(taskId, flowVersion) || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED')
       return
+    // 网络类错误（超时/断网）自动重试：移动端切后台回前台网络恢复较慢
+    if (isNetworkLikeError(error) && qqPollRetries < POLL_NETWORK_RETRY_MAX) {
+      qqPollRetries += 1
+      qqStatus.value = `网络波动，正在重试（${qqPollRetries}/${POLL_NETWORK_RETRY_MAX}）…`
+      qqError.value = ''
+      qqPollTimer = setTimeout(() => void pollQqLogin(taskId, flowVersion), POLL_NETWORK_RETRY_DELAY_MS)
+      return
+    }
     qqError.value = getApiErrorMessage(error, 'QQ 登录状态检查失败')
   }
   finally {
@@ -893,10 +928,31 @@ watch(() => form.name, (name) => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   resetWxLogin()
   resetQqLogin()
   resetCaptureLogin()
 })
+
+// 移动端切后台扫码回前台：自动恢复二维码状态检查，避免超时报错卡死（对齐上游行为）
+function handleVisibilityChange() {
+  if (document.hidden || !props.show)
+    return
+  // 微信扫码：回前台重新检查原二维码，已在微信确认的登录不会被丢弃
+  if (activeLoginTab.value === 'wx_qr' && wxTaskId.value) {
+    wxPollRetries = 0
+    wxError.value = ''
+    void pollWxLogin(wxTaskId.value, wxFlowVersion)
+  }
+  // QQ 扫码：同样恢复状态轮询
+  if (activeLoginTab.value === 'qq_qr' && qqTaskId.value) {
+    qqPollRetries = 0
+    qqError.value = ''
+    void pollQqLogin(qqTaskId.value, qqFlowVersion)
+  }
+}
+
+document.addEventListener('visibilitychange', handleVisibilityChange)
 </script>
 
 <template>
