@@ -104,6 +104,8 @@ const captureFlow = ref<CaptureFlowState | null>(null)
 let capturePollTimer: ReturnType<typeof setTimeout> | undefined
 let captureFlowVersion = 0
 let captureAutoCompleteDone = false
+let capturePollRetries = 0
+let captureCompleteRetries = 0
 
 const captureHelpSteps = computed(() => captureHelpMode.value === 'first'
   ? [
@@ -177,6 +179,8 @@ async function cancelCaptureSession() {
   stopCapturePolling()
   captureFlowVersion += 1
   captureAutoCompleteDone = false
+  capturePollRetries = 0
+  captureCompleteRetries = 0
   const flowId = captureFlow.value?.id
   captureFlow.value = null
   captureChecking.value = false
@@ -237,6 +241,7 @@ async function pollCaptureSession() {
       return
     captureFlow.value = data.data
     captureError.value = data.data.proxy?.error || ''
+    capturePollRetries = 0
     if (data.data.codeCaptured && !captureAutoCompleteDone) {
       // 每个任务只自动提交一次，失败后改由用户手动点击「立即添加」重试
       captureAutoCompleteDone = true
@@ -245,6 +250,14 @@ async function pollCaptureSession() {
     }
   }
   catch (e: any) {
+    // 移动端切后台回前台网络恢复慢：网络类错误自动重试而非直接报错卡死
+    if (isNetworkLikeError(e) && capturePollRetries < POLL_NETWORK_RETRY_MAX) {
+      capturePollRetries += 1
+      captureError.value = `网络波动，正在重试（${capturePollRetries}/${POLL_NETWORK_RETRY_MAX}）…`
+      stopCapturePolling()
+      capturePollTimer = setTimeout(() => void pollCaptureSession(), POLL_NETWORK_RETRY_DELAY_MS * 2)
+      return
+    }
     captureError.value = getApiErrorMessage(e, '查询抓取状态失败')
   }
   finally {
@@ -265,6 +278,7 @@ async function completeCaptureAccount() {
     if (!data?.ok)
       throw new Error(getApiErrorMessage(data, props.editData ? '更新账号失败' : '添加账号失败'))
     localStorage.setItem(CAPTURE_SUCCESS_STORAGE_KEY, '1')
+    captureCompleteRetries = 0
     stopCapturePolling()
     captureFlow.value = null
     emit('saved')
@@ -274,6 +288,16 @@ async function completeCaptureAccount() {
     if (e?.response?.data?.code === 'DUPLICATE_CAPTURE_ACCOUNT') {
       stopCapturePolling()
       captureFlow.value = null
+    }
+    // 移动端切后台回前台网络恢复慢：complete 网络类错误自动重试，避免卡在报错界面
+    if (isNetworkLikeError(e) && captureCompleteRetries < POLL_NETWORK_RETRY_MAX) {
+      captureCompleteRetries += 1
+      captureError.value = `网络波动，正在重试提交（${captureCompleteRetries}/${POLL_NETWORK_RETRY_MAX}）…`
+      setTimeout(() => {
+        if (captureFlow.value)
+          void completeCaptureAccount()
+      }, POLL_NETWORK_RETRY_DELAY_MS)
+      return
     }
     captureError.value = getApiErrorMessage(e, props.editData ? '更新账号失败' : '添加账号失败')
   }
@@ -949,6 +973,14 @@ function handleVisibilityChange() {
     qqPollRetries = 0
     qqError.value = ''
     void pollQqLogin(qqTaskId.value, qqFlowVersion)
+  }
+  // 抓包登录：回前台清掉瞬时网络错误并立即恢复状态轮询（code 已抓到则会在轮询中自动提交）
+  if (activeLoginTab.value === 'capture' && captureFlow.value && !captureCompleting.value) {
+    capturePollRetries = 0
+    if (/网络波动/.test(captureError.value))
+      captureError.value = ''
+    if (!capturePollTimer && !captureChecking.value)
+      scheduleCapturePoll()
   }
 }
 
