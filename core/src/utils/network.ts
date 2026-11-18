@@ -716,6 +716,13 @@ function handleNotify(msg: any): void {
                         } else if (delta !== 0) {
                             userState.goldBean = Math.max(0, Number(userState.goldBean || 0) + delta);
                         }
+                    } else if (id === 101351) {
+                        // 同气连枝礼包 - 帮忙好友时有概率获得，计入「今日统计 → 同气礼包」
+                        if (delta > 0 || count > 0) {
+                            const giftDelta = delta > 0 ? delta : 1;
+                            recordOperation('tongQiGift', giftDelta);
+                            log('好友', `获得同气连枝礼包 +${giftDelta}`, { event: '同气连枝礼包', count: giftDelta });
+                        }
                     }
                 }
             } catch {}
