@@ -21,6 +21,8 @@ export type AutomationSettingsFormModel = Pick<
   | 'autoAcceptHarvestStealEnabled'
   | 'autoAcceptHarvestStealHarvest'
   | 'autoAcceptHarvestStealSteal'
+  | 'goldenBugKeepCount'
+  | 'goldenBugRoundLimit'
 > & { emailClaimHour: number | string }
 
 withDefaults(defineProps<{
@@ -159,6 +161,9 @@ const ranchStrategies = [
             </div>
             <div class="automation-setting-item">
               <BaseSwitch v-model="settings.automation.skip_own_weed_bug" class="automation-setting-item" label="巡田时跳过一键务农" />
+            </div>
+            <div class="automation-setting-item">
+              <BaseSwitch v-model="settings.automation.golden_bug_clear" class="automation-setting-item" label="祛除黄金虫" />
             </div>
             <div class="automation-setting-item">
               <BaseSwitch v-model="settings.automation.land_upgrade" class="automation-setting-item" label="自动升级土地" />
@@ -317,11 +322,24 @@ const ranchStrategies = [
                 <BaseSwitch v-model="settings.automation.friend_bad" class="automation-setting-item" label="自动捣乱" />
               </div>
               <div class="automation-setting-item">
+                <BaseSwitch v-model="settings.automation.friend_golden_bug" class="automation-setting-item" label="放黄金虫" />
+              </div>
+              <div class="automation-setting-item">
                 <BaseSwitch v-model="settings.automation.friend_help_exp_limit" class="automation-setting-item" label="经验满不帮忙" />
               </div>
               <div class="automation-setting-item">
                 <BaseSwitch v-model="settings.automation.friend_help_protect_dog_ignore_exp_limit" class="automation-setting-item" label="护主犬经验满仍帮忙" />
               </div>
+            </div>
+          </div>
+
+          <div v-if="settings.automation.friend && settings.automation.friend_golden_bug" class="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <div class="mb-2 text-xs text-blue-700 font-medium dark:text-blue-300">
+              黄金虫策略
+            </div>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <BaseInput v-model.number="settings.goldenBugKeepCount" label="黄金虫保留数量" type="number" min="0" />
+              <BaseInput v-model.number="settings.goldenBugRoundLimit" label="黄金虫单轮上限" type="number" min="1" />
             </div>
           </div>
 

@@ -327,12 +327,13 @@ export async function putWeedsDetailed(friendGid: number, landIds: number[], pro
     return putPlantItemsDetailed(friendGid, landIds, types.PutWeedsRequest, types.PutWeedsReply, 'PutWeeds', propagateErrors);
 }
 
-// 使用社交道具（如友谊果实）
-export async function putSocialItem(friendGid: number, landId: number, itemId: number): Promise<any> {
+// 使用社交道具（黄金虫等；landIds 数组，socialType 2=黄金虫）
+export async function putSocialItem(friendGid: number, landIds: number[], itemId: number, socialType: number = 0): Promise<any> {
     const body: Uint8Array = types.PutSocialItemRequest.encode(types.PutSocialItemRequest.create({
         host_gid: toLong(friendGid),
-        land_id: toLong(landId),
+        land_ids: landIds.map((id: number) => toLong(id)),
         item_id: toLong(itemId),
+        social_type: toLong(socialType),
     })).finish();
     const { body: replyBody } = await sendMsgAsync('gamepb.plantpb.PlantService', 'PutSocialItem', body);
     return types.PutSocialItemReply.decode(replyBody);

@@ -564,6 +564,10 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const autoAcceptHarvestStealHarvest = id && (typeof store.getAutoAcceptHarvestStealHarvest === 'function') ? store.getAutoAcceptHarvestStealHarvest(id) : 8;
             const autoAcceptHarvestStealSteal = id && (typeof store.getAutoAcceptHarvestStealSteal === 'function') ? store.getAutoAcceptHarvestStealSteal(id) : 1;
             const autoCodeRefresh = id && (typeof store.getAutoCodeRefresh === 'function') ? store.getAutoCodeRefresh(id) : { enabled: false, intervalMinutes: 60 };
+            // 黄金虫策略（保留数量/单轮上限）取自账号配置快照
+            const goldenBugSnapshot: any = id && (typeof store.getConfigSnapshot === 'function') ? store.getConfigSnapshot(id) : {};
+            const goldenBugKeepCount = Number(goldenBugSnapshot.goldenBugKeepCount ?? 0);
+            const goldenBugRoundLimit = Number(goldenBugSnapshot.goldenBugRoundLimit ?? 24);
             const ui = store.getUI();
             // 下线提醒按登录用户隔离：返回当前用户自己的配置（未配置时返回默认值）
             const settingsUser = (req as AuthenticatedRequest).currentUser || null;
@@ -574,7 +578,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const globalMailer = typeof featuresStore.getGlobalMailerPublic === 'function'
                 ? featuresStore.getGlobalMailerPublic()
                 : { available: false, senderName: '' };
-            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, autoCodeRefresh, ui, offlineReminder, globalMailer } });
+            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, goldenBugKeepCount, goldenBugRoundLimit, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, autoCodeRefresh, ui, offlineReminder, globalMailer } });
         } catch (e: any) {
             handleApiError(res, e);
         }

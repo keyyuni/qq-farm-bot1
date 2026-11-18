@@ -26,6 +26,8 @@ export interface AutomationConfig extends RanchAutomationConfig {
   friend_steal: boolean;
   friend_help: boolean;
   friend_bad: boolean;
+  friend_golden_bug: boolean;
+  golden_bug_clear: boolean;
   friend_help_protect_dog_ignore_exp_limit: boolean;
   task: boolean;
   fertilizer_gift: boolean;
@@ -88,6 +90,10 @@ export interface AccountConfig {
   stealDelaySeconds: number;
   plantOrderRandom: boolean;
   plantDelaySeconds: number;
+  /** 黄金虫保留数量（背包中不出）。 */
+  goldenBugKeepCount: number;
+  /** 黄金虫单轮投放上限（1-100）。 */
+  goldenBugRoundLimit: number;
   fertilizerBuyOrganicCount: number;
   fertilizerBuyOrganicThresholdHours: number;
   fertilizerBuyNormalCount: number;

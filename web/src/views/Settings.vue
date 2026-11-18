@@ -459,6 +459,8 @@ const localStrategySettings = ref({
   stealDelaySeconds: 0,
   plantOrderRandom: false,
   plantDelaySeconds: 0,
+  goldenBugKeepCount: 0,
+  goldenBugRoundLimit: 24,
   intervals: { farmMin: 2, farmMax: 5, friendMin: 10, friendMax: 15 },
   friendQuietHours: { enabled: false, start: '23:00', end: '07:00', continueFarm: true },
 })
@@ -927,6 +929,8 @@ function syncLocalStrategySettings() {
       stealDelaySeconds: settings.value.stealDelaySeconds ?? 0,
       plantOrderRandom: !!settings.value.plantOrderRandom,
       plantDelaySeconds: settings.value.plantDelaySeconds ?? 0,
+      goldenBugKeepCount: settings.value.goldenBugKeepCount ?? 0,
+      goldenBugRoundLimit: settings.value.goldenBugRoundLimit ?? 24,
       intervals: settings.value.intervals,
       friendQuietHours: {
         enabled: false,
@@ -1043,6 +1047,8 @@ const localAutomationSettings = ref({
     friend_steal: false,
     friend_help: false,
     friend_bad: true,
+    friend_golden_bug: false,
+    golden_bug_clear: true,
     friend_help_exp_limit: false,
     friend_help_protect_dog_ignore_exp_limit: true,
     fertilizer_gift: false,
@@ -1067,6 +1073,8 @@ const localAutomationSettings = ref({
   fertilizerBuyNormalCount: 10,
   fertilizerBuyNormalThresholdHours: 10,
   fertilizerBuyCheckIntervalMinutes: 30,
+  goldenBugKeepCount: 0,
+  goldenBugRoundLimit: 24,
   emailClaimHour: 10 as number | string,
   autoAcceptFriendMinLevel: 0,
   autoAcceptRequireOwnLevel: false,
@@ -1098,6 +1106,8 @@ function syncLocalAutomationSettings() {
         friend_steal: false,
         friend_help: false,
         friend_bad: false,
+        friend_golden_bug: false,
+        golden_bug_clear: true,
         friend_help_exp_limit: false,
         friend_help_protect_dog_ignore_exp_limit: true,
         fertilizer_gift: false,
@@ -1131,6 +1141,8 @@ function syncLocalAutomationSettings() {
         friend_steal: false,
         friend_help: false,
         friend_bad: false,
+        friend_golden_bug: false,
+        golden_bug_clear: true,
         friend_help_exp_limit: false,
         friend_help_protect_dog_ignore_exp_limit: true,
         fertilizer_gift: false,
@@ -1557,10 +1569,10 @@ async function handleTestOffline() {
               :key="acc.id"
               class="cursor-pointer border cartoon-card rounded-2xl bg-white p-3 shadow-md transition-all duration-200 dark:bg-gray-800 sm:p-4"
               :class="String(currentAccountId) === String(acc.id)
-                ? 'ring-2'
+                ? 'border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary)] ring-offset-1 ring-offset-gray-50 dark:ring-offset-gray-900'
                 : 'border-transparent'"
               :style="String(currentAccountId) === String(acc.id)
-                ? { borderColor: 'var(--theme-primary)', backgroundColor: 'rgba(var(--theme-primary-rgb, 59, 130, 246), 0.1)' }
+                ? { backgroundColor: 'rgba(var(--theme-primary-rgb, 59, 130, 246), 0.1)' }
                 : {}"
               @click="selectAccount(acc)"
             >

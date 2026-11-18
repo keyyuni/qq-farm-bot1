@@ -204,9 +204,12 @@ async function runFarmOperation(
     // 摘要
     const statusParts: string[] = [];
     if (status.harvestable.length) statusParts.push(`收:${status.harvestable.length}`);
+    const goldenBugClearOn = isAutomationOn('golden_bug_clear');
+    const goldenBugLandIds: number[] = goldenBugClearOn ? (status.needGoldenBug || []) : [];
     const farmingCount = new Set([...status.needWeed, ...status.needBug, ...status.needInteractionCleanup]).size
         + socialEventItemIds.length;
     if (farmingCount > 0) statusParts.push(`农:${farmingCount}`);
+    if (goldenBugLandIds.length) statusParts.push(`金虫:${goldenBugLandIds.length}`);
     if (status.needWater.length) statusParts.push(`水:${status.needWater.length}`);
     if (status.dead.length) statusParts.push(`枯:${status.dead.length}`);
     if (status.empty.length) statusParts.push(`空:${status.empty.length}`);
@@ -219,13 +222,17 @@ async function runFarmOperation(
     // 执行一键务农 (除草+除虫+浇水) - 串行执行以降低并发压力
     if (opType === 'all' || opType === 'clear') {
         // 检查是否跳过一键务农（仅自动模式生效，手动clear不受影响）
+        // 跳过时保留草虫，但黄金虫仍照常祛除（对齐源码 farming-orchestrator 行为）
         const skipOwnWeedBug = opType === 'all' && isAutomationOn('skip_own_weed_bug');
-        let farmingLandIds = [...new Set([
-            ...status.needWeed,
-            ...status.needBug,
-            ...status.needWater,
-            ...status.needInteractionCleanup,
-        ])];
+        let farmingLandIds = skipOwnWeedBug
+            ? [...new Set(goldenBugLandIds)]
+            : [...new Set([
+                ...status.needWeed,
+                ...status.needBug,
+                ...status.needWater,
+                ...status.needInteractionCleanup,
+                ...goldenBugLandIds,
+            ])];
 
         const validSingleLandIds = new Set<number>([
             ...status.growing,
@@ -244,7 +251,7 @@ async function runFarmOperation(
             if (fallbackLandId > 0) farmingLandIds = [fallbackLandId];
         }
 
-        if (!skipOwnWeedBug && farmingLandIds.length > 0) {
+        if (farmingLandIds.length > 0) {
             try {
                 await farming(farmingLandIds, socialEventItemIds);
                 const parts: string[] = [];
@@ -252,10 +259,12 @@ async function runFarmOperation(
                 if (status.needBug.length) parts.push(`虫${status.needBug.length}`);
                 if (status.needWater.length) parts.push(`水${status.needWater.length}`);
                 if (status.needInteractionCleanup.length) parts.push(`道具${status.needInteractionCleanup.length}`);
+                if (goldenBugLandIds.length) parts.push(`黄金虫${goldenBugLandIds.length}`);
                 if (socialEventItemIds.length) parts.push(`青蛙${socialEventItemIds.length}`);
                 actions.push(hasTargetLandId
                     ? `单点务农#${targetLandId}${parts.length ? `(${parts.join('/')})` : ''}`
                     : `一键务农${parts.join('/')}`);
+                if (goldenBugLandIds.length) recordOperation('goldenBugClear', goldenBugLandIds.length);
                 recordOperation('farming', farmingLandIds.length);
             } catch (e: any) {
                 logWarn(hasTargetLandId ? '单点务农' : '一键务农', e.message);

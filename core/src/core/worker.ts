@@ -9,7 +9,7 @@ const { getLevelExpProgress, loadConfigs } = require('../config/gameConfig');
 const { getAutomation, getPreferredSeed, getConfigSnapshot, applyConfigSnapshot } = require('../models/store');
 const { checkAndClaimEmails, configureEmailClaim, getEmailDailyState } = require('../services/email');
 const { checkFarm, startFarmCheckLoop, stopFarmCheckLoop, refreshFarmCheckLoop, getLandsDetail, getAvailableSeeds, purchaseSeed, runFarmOperation, runFertilizerByConfig, fertilizeOwnLand } = require('../services/farm');
-const { checkFriends, startFriendCheckLoop, stopFriendCheckLoop, refreshFriendCheckLoop, getFriendsList, getFriendsListCacheOnly, getFriendLandsDetail, doFriendOperation, deleteFriend } = require('../services/friend');
+const { checkFriends, startFriendCheckLoop, stopFriendCheckLoop, refreshFriendCheckLoop, getFriendsList, getFriendsListCacheOnly, getFriendLandsDetail, doFriendOperation, deleteFriend, runGoldenBugPlacement } = require('../services/friend');
 const { getInteractRecords } = require('../services/interact');
 const { processInviteCodes } = require('../services/invite');
 const { autoBuyFertilizer, checkAndBuyFertilizerBoth, buyFreeGifts, getFreeGiftDailyState } = require('../services/mall');
@@ -371,7 +371,11 @@ async function runFriendTick(auto: any): Promise<void> {
     try {
         // checkFriends 内部保留各自开关、经验上限、黑名单和每日捣乱次数判断。
         // 好友农场任务排在自己农场之后，前台操作永远优先于它。
-        await runWithRequestClass('friend', () => checkFriends());
+        await runWithRequestClass('friend', async () => {
+            await checkFriends();
+            // 放黄金虫：开关开启时随好友巡查执行（服务内部有 10 分钟最小间隔与每日额度控制）
+            if (getAutomation().friend_golden_bug) await runGoldenBugPlacement();
+        });
     } catch (e: any) {
         log('系统', `好友统一任务执行失败: ${e.message}`, { module: 'system', event: '好友统一任务', result: 'error' });
     } finally {
@@ -581,6 +585,24 @@ function applyRuntimeConfig(snapshot: any, syncNow: boolean = false): number {
                         log('施肥', `保存配置后立即施肥失败: ${e.message}`, {
                             module: 'farm',
                             event: '施肥',
+                            result: 'error',
+                        });
+                    }
+                });
+            }
+
+            // 开启「放黄金虫」后 3 秒立即执行一次（对齐源码行为）
+            const prevGoldenBug = !!(prevAuto && (prevAuto as any).friend_golden_bug);
+            const newGoldenBug = !!(nextAuto && (nextAuto as any).friend_golden_bug);
+            if (!prevGoldenBug && newGoldenBug) {
+                workerScheduler.setTimeoutTask('friend_golden_bug_immediate', 3000, async () => {
+                    if (!loginReady) return;
+                    try {
+                        await runGoldenBugPlacement({ force: true });
+                    } catch (err: any) {
+                        log('好友', `开启放黄金虫后立即执行失败: ${err.message}`, {
+                            module: 'friend',
+                            event: '放置黄金虫',
                             result: 'error',
                         });
                     }

@@ -123,6 +123,8 @@ function getConfigSnapshot(accountId?: unknown): AccountConfig & { ui: typeof gl
         stealDelaySeconds: Math.max(0, Math.min(300, Number(cfg.stealDelaySeconds) || 0)),
         plantOrderRandom: !!cfg.plantOrderRandom,
         plantDelaySeconds: Math.max(0, Math.min(60, Number(cfg.plantDelaySeconds) || 0)),
+        goldenBugKeepCount: Math.max(0, Math.min(9999, Number(cfg.goldenBugKeepCount) || 0)),
+        goldenBugRoundLimit: Math.max(1, Math.min(100, Number(cfg.goldenBugRoundLimit) || 24)),
         fertilizerBuyOrganicCount: Math.max(0, Math.min(10000, Number(cfg.fertilizerBuyOrganicCount) || 0)),
         fertilizerBuyOrganicThresholdHours: Math.max(0, Math.min(990, Number(cfg.fertilizerBuyOrganicThresholdHours) || 0)),
         fertilizerBuyNormalCount: Math.max(0, Math.min(10000, Number(cfg.fertilizerBuyNormalCount) || 0)),
@@ -239,6 +241,14 @@ function applyConfigSnapshot(snapshot: Record<string, any> | undefined, options:
 
     if (cfg.plantDelaySeconds !== undefined && cfg.plantDelaySeconds !== null) {
         next.plantDelaySeconds = Math.max(0, Math.min(60, Number(cfg.plantDelaySeconds) || 0));
+    }
+
+    if (cfg.goldenBugKeepCount !== undefined && cfg.goldenBugKeepCount !== null) {
+        next.goldenBugKeepCount = Math.max(0, Math.min(9999, Number(cfg.goldenBugKeepCount) || 0));
+    }
+
+    if (cfg.goldenBugRoundLimit !== undefined && cfg.goldenBugRoundLimit !== null) {
+        next.goldenBugRoundLimit = Math.max(1, Math.min(100, Number(cfg.goldenBugRoundLimit) || 24));
     }
 
     if (cfg.fertilizerBuyOrganicCount !== undefined && cfg.fertilizerBuyOrganicCount !== null) {

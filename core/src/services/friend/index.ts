@@ -40,3 +40,8 @@ export {
     getFriendsList,
     getFriendsListCacheOnly,
 } from './visit-strategy';
+
+export {
+    putGoldenBug,
+    runGoldenBugPlacement,
+} from './golden-bug-service';

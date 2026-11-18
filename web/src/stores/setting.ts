@@ -45,6 +45,8 @@ export interface AutomationConfig {
   friend_steal?: boolean
   friend_help?: boolean
   friend_bad?: boolean
+  friend_golden_bug?: boolean
+  golden_bug_clear?: boolean
   friend_help_exp_limit?: boolean
   friend_help_protect_dog_ignore_exp_limit?: boolean
   fertilizer_gift?: boolean
@@ -128,6 +130,10 @@ export interface SettingsState {
   stealDelaySeconds: number
   plantOrderRandom: boolean
   plantDelaySeconds: number
+  /** 黄金虫保留数量（背包中不出） */
+  goldenBugKeepCount: number
+  /** 黄金虫单轮投放上限 */
+  goldenBugRoundLimit: number
   fertilizerBuyOrganicCount: number
   fertilizerBuyOrganicThresholdHours: number
   fertilizerBuyNormalCount: number
@@ -154,6 +160,8 @@ type SaveableSettingsKey
     | 'stealDelaySeconds'
     | 'plantOrderRandom'
     | 'plantDelaySeconds'
+    | 'goldenBugKeepCount'
+    | 'goldenBugRoundLimit'
     | 'fertilizerBuyOrganicCount'
     | 'fertilizerBuyOrganicThresholdHours'
     | 'fertilizerBuyNormalCount'
@@ -181,6 +189,8 @@ const SAVEABLE_SETTINGS_KEYS: SaveableSettingsKey[] = [
   'stealDelaySeconds',
   'plantOrderRandom',
   'plantDelaySeconds',
+  'goldenBugKeepCount',
+  'goldenBugRoundLimit',
   'fertilizerBuyOrganicCount',
   'fertilizerBuyOrganicThresholdHours',
   'fertilizerBuyNormalCount',
@@ -228,6 +238,8 @@ function createDefaultSettings(): SettingsState {
     stealDelaySeconds: 0,
     plantOrderRandom: false,
     plantDelaySeconds: 0,
+    goldenBugKeepCount: 0,
+    goldenBugRoundLimit: 24,
     fertilizerBuyOrganicCount: 10,
     fertilizerBuyOrganicThresholdHours: 10,
     fertilizerBuyNormalCount: 10,
@@ -285,6 +297,8 @@ export const useSettingStore = defineStore('setting', () => {
         ...(cloneValue(data.friendQuietHours) || {}),
       },
       automation: cloneValue(data.automation || defaults.automation),
+      goldenBugKeepCount: Number(data.goldenBugKeepCount ?? defaults.goldenBugKeepCount),
+      goldenBugRoundLimit: Number(data.goldenBugRoundLimit ?? defaults.goldenBugRoundLimit),
       ui: cloneValue(data.ui || defaults.ui),
       offlineReminder: {
         ...defaults.offlineReminder,

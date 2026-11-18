@@ -25,6 +25,10 @@ const {
 const { getCareerInfoOrNull } = require('../career');
 const { recordOperation } = require('../stats');
 const { sellAllFruits } = require('../warehouse');
+
+// 黄金虫道具与社交类型（与源码 qq-farm-bot 对齐）
+export const GOLDEN_BUG_ITEM_ID = 301101;
+export const GOLDEN_BUG_SOCIAL_TYPE = 2;
 const {
     getAllFriends,
     delFriend,
@@ -282,6 +286,7 @@ interface AnalyzeResult {
     needBug: number[];
     canPutWeed: number[];
     canPutBug: number[];
+    canPutGoldenBug: number[];
 }
 
 interface AnalyzeOptions {
@@ -298,6 +303,7 @@ export function analyzeFriendLands(lands: any[], myGid: number, friendName: stri
         needBug: [],     // 需要除虫
         canPutWeed: [],  // 可以放草
         canPutBug: [],   // 可以放虫
+        canPutGoldenBug: [], // 可以放黄金虫
     };
     const landsMap: any = buildLandMap(lands);
 
@@ -363,6 +369,16 @@ export function analyzeFriendLands(lands: any[], myGid: number, friendName: stri
             }
             if (insectOwners.length < 2 && !iAlreadyPutBug) {
                 result.canPutBug.push(id);
+            }
+
+            // 黄金虫: 未成熟且未死亡、且当前没有黄金虫的地可放
+            const socialItems: any[] = Array.isArray(plant.social_items) ? plant.social_items : [];
+            const alreadyHasGoldenBug: boolean = socialItems.some((item: any) => (
+                toNum(item && item.item_id) === GOLDEN_BUG_ITEM_ID
+                && toNum(item && item.type) === GOLDEN_BUG_SOCIAL_TYPE
+            ));
+            if (phaseVal !== PlantPhase.DEAD && !alreadyHasGoldenBug) {
+                result.canPutGoldenBug.push(id);
             }
         }
     }
@@ -673,7 +689,15 @@ export async function doFriendOperation(friendGid: any, opType: string, propagat
             if (!landIds.length) return { ok: true, opType, count: 0, message: '没有需要照顾的土地' };
             const outcome: FarmingOutcome = await runFarmingWithFallback(gid, landIds, false, getHelpSnapshotKey(lands), propagateErrors);
             count = outcome.landCount;
-            if (outcome.operationCount > 0) recordOperation('helpFarming', outcome.operationCount);
+            if (outcome.operationCount > 0) {
+                // 按操作类型分流统计（对齐源码 friend-visit.js：water→helpWater / weed→helpWeed / bug→helpBug）
+                const opKey = opType === 'farming'
+                    ? 'helpFarming'
+                    : opType === 'water' ? 'helpWater'
+                    : opType === 'weed' ? 'helpWeed'
+                    : 'helpBug';
+                recordOperation(opKey, outcome.operationCount);
+            }
             return {
                 ok: true,
                 opType,
@@ -840,16 +864,30 @@ export async function visitFriend(
         const allExpIds: number[] = [10005, 10006, 10007];
         const allowByExp: boolean = (!effectiveStopWhenExpLimit) || (schedulerRef().canGetExpByCandidates(allExpIds) && schedulerRef().getCanGetHelpExp());
         if (allHelpLandIds.length > 0 && allowByExp) {
-            const outcome: FarmingOutcome = await runFarmingWithFallback(gid, allHelpLandIds, stopWhenExpLimit, getHelpSnapshotKey(lands));
-            if (outcome.landCount > 0) {
-                const parts: string[] = [];
-                if (status.needWeed.length) parts.push(`草${status.needWeed.length}`);
-                if (status.needBug.length) parts.push(`虫${status.needBug.length}`);
-                if (status.needWater.length) parts.push(`水${status.needWater.length}`);
-                actions.push(`一键务农${outcome.landCount}块/${outcome.operationCount}项(${parts.join('/')})`);
-                if (outcome.dogSkillGiftCount > 0) actions.push(`同气连枝礼包x${outcome.dogSkillGiftCount}(自动获得)`);
+            // 按类别分批执行并分流统计（对齐源码 friend-visit.js：weed→helpWeed / bug→helpBug / water→helpWater）
+            const helpBatches: Array<{ ids: number[], opKey: string, label: string }> = [
+                { ids: status.needWeed, opKey: 'helpWeed', label: '草' },
+                { ids: status.needBug, opKey: 'helpBug', label: '虫' },
+                { ids: status.needWater, opKey: 'helpWater', label: '水' },
+            ];
+            const parts: string[] = [];
+            let helpLandTotal = 0;
+            let helpOpTotal = 0;
+            let dogSkillGiftTotal = 0;
+            for (const batch of helpBatches) {
+                if (!batch.ids.length) continue;
+                const outcome: FarmingOutcome = await runFarmingWithFallback(gid, batch.ids, stopWhenExpLimit, getHelpSnapshotKey(lands));
+                if (outcome.landCount <= 0) continue;
+                parts.push(`${batch.label}${outcome.landCount}`);
+                helpLandTotal += outcome.landCount;
+                helpOpTotal += outcome.operationCount;
+                dogSkillGiftTotal += Number(outcome.dogSkillGiftCount) || 0;
                 totalActions.farming += outcome.landCount;
-                recordOperation('helpFarming', outcome.operationCount);
+                if (outcome.operationCount > 0) recordOperation(batch.opKey, outcome.operationCount);
+            }
+            if (helpLandTotal > 0) {
+                actions.push(`一键务农${helpLandTotal}块/${helpOpTotal}项(${parts.join('/')})`);
+                if (dogSkillGiftTotal > 0) actions.push(`同气连枝礼包x${dogSkillGiftTotal}(自动获得)`);
             }
         }
     }

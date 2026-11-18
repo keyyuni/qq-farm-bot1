@@ -20,6 +20,9 @@ const {
 const { toNum, toTimeSec, getServerTimeSec, log, logWarn } = require('../../utils/utils');
 
 const MATURE_PHASE_RECORD_ID = 19;
+// 黄金虫道具与社交类型（与源码对齐；301101 也属于可清理的互动道具）
+const GOLDEN_BUG_ITEM_ID = 301101;
+const GOLDEN_BUG_SOCIAL_TYPE = 2;
 const { buildLandUpgradeDetail } = require('./land-upgrade');
 
 function int64String(value: any): string {
@@ -764,6 +767,7 @@ function analyzeLands(lands: any[], debug?: boolean, ownGid?: number): {
     needWater: number[];
     needWeed: number[];
     needBug: number[];
+    needGoldenBug: number[];
     needInteractionCleanup: number[];
     growing: number[];
     empty: number[];
@@ -777,6 +781,7 @@ function analyzeLands(lands: any[], debug?: boolean, ownGid?: number): {
         needWater: [] as number[],
         needWeed: [] as number[],
         needBug: [] as number[],
+        needGoldenBug: [] as number[],
         needInteractionCleanup: [] as number[],
         growing: [] as number[],
         empty: [] as number[],
@@ -878,6 +883,16 @@ function analyzeLands(lands: any[], debug?: boolean, ownGid?: number): {
         }
         if (hasBugs) {
             result.needBug.push(id);
+        }
+
+        // 黄金虫：挂在作物上的黄金虫需要祛除（golden_bug_clear 开关由调用方判断）
+        const socialItems: any[] = Array.isArray(plant.social_items) ? plant.social_items : [];
+        const hasGoldenBug: boolean = socialItems.some((item: any) => (
+            toNum(item && item.item_id) === GOLDEN_BUG_ITEM_ID
+            && toNum(item && item.type) === GOLDEN_BUG_SOCIAL_TYPE
+        ));
+        if (hasGoldenBug) {
+            result.needGoldenBug.push(id);
         }
 
         result.growing.push(id);
