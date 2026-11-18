@@ -2,7 +2,7 @@
 import { NButton } from 'naive-ui/es/button'
 import { NDropdown } from 'naive-ui/es/dropdown'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { BUCKETS, formatCount, formatDuration, formatHours, RANCH_IMAGE, useRanchActions, useRanchClock, useRanchLoader } from '@/components/ranch/ranch-shared'
 import RanchAnimalCard from '@/components/ranch/RanchAnimalCard.vue'
 import RanchGate from '@/components/ranch/RanchGate.vue'
@@ -87,9 +87,6 @@ function target(animal: any) {
             <small class="ranch-head__count">{{ animals.length }} / {{ capacity }}</small>
           </h3>
           <div class="ranch-actions">
-            <NButton :disabled="disabled || !canFeed" @click="feedPickerVisible = true">
-              <span class="i-carbon-flash" />一键喂养
-            </NButton>
             <NButton :disabled="disabled || !hazards" @click="request('clean')">
               <span class="i-carbon-clean" />一键清理
             </NButton>
@@ -172,35 +169,6 @@ function target(animal: any) {
         </div>
       </div>
     </RanchGate>
-
-    <NModal
-      :show="feedPickerVisible"
-      :auto-focus="false"
-      @update:show="feedPickerVisible = $event"
-    >
-      <NCard class="feed-picker" role="dialog" aria-modal="true" title="一键喂养" :bordered="false" size="medium">
-        <p class="feed-picker__tip">选择用于加速动物成长的罐头类型</p>
-        <div class="feed-picker__options">
-          <button
-            v-for="option in feedOptions"
-            :key="option.bucketType"
-            type="button"
-            class="feed-picker__option"
-            :disabled="disabled || option.seconds <= 0"
-            @click="chooseFeed(option.bucketType)"
-          >
-            <img :src="option.image" :alt="option.name">
-            <span class="feed-picker__name">{{ option.name }}喂养</span>
-            <span class="feed-picker__stock">{{ option.seconds > 0 ? `存量 ${formatHours(option.seconds)}` : '暂无存量' }}</span>
-          </button>
-        </div>
-        <template #footer>
-          <div class="flex justify-end">
-            <BaseButton variant="secondary" @click="feedPickerVisible = false">取消</BaseButton>
-          </div>
-        </template>
-      </NCard>
-    </NModal>
   </div>
 </template>
 
@@ -416,65 +384,6 @@ function target(animal: any) {
   font-variant-numeric: tabular-nums;
 }
 
-.feed-picker {
-  width: min(420px, calc(100vw - 32px));
-}
-
-.feed-picker__tip {
-  margin: 0 0 14px;
-  color: var(--ui-muted);
-  font-size: 13px;
-}
-
-.feed-picker__options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.feed-picker__option {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--ui-border);
-  border-radius: 12px;
-  color: var(--ui-ink);
-  background: var(--ui-surface-soft);
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.feed-picker__option:hover:not(:disabled) {
-  border-color: var(--ui-primary);
-  background: var(--ui-primary-soft);
-}
-
-.feed-picker__option:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.feed-picker__option img {
-  width: 36px;
-  height: 36px;
-  object-fit: contain;
-}
-
-.feed-picker__name {
-  flex: 1;
-  font-size: 14px;
-  font-weight: var(--fw-600);
-}
-
-.feed-picker__stock {
-  color: var(--ui-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 @media (max-width: 639px) {
   .ranch-head,
   .ranch-summary {
@@ -500,12 +409,6 @@ function target(animal: any) {
   .ranch-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-  }
-}
-
-@media (max-width: 479px) {
-  .ranch-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   }
 }
 
